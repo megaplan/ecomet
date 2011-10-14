@@ -13,6 +13,6 @@
 	{registered, []},
 	{env, []},
 	{mod, {mcom_server_app,[]}},
-	{applications, [kernel, stdlib]}
+	{applications, [kernel, stdlib, ssl]} % ssl - for yaws
 ]}.
 
