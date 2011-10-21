@@ -34,7 +34,6 @@
 %%%----------------------------------------------------------------------------
 
 -export([get_config/0]).
--export([get_config_child/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -49,27 +48,6 @@
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
-%%
-%% @doc fills in the child config with values from input list.
-%% @since 2011-10-14 15:50
-%%
--spec get_config_child(list()) -> #child{}.
-
-get_config_child(List) ->
-    #child{
-        url_rewrite = proplists:get_value(url_rewrite, List, []),
-        name = proplists:get_value(name, List),
-        id = proplists:get_value(id, List),
-        from = proplists:get_value(from, List),
-        method = proplists:get_value(method, List, <<>>),
-        url = proplists:get_value(url, List, <<>>),
-        host = proplists:get_value(host, List),
-        auth = proplists:get_value(auth, List),
-        params = proplists:get_value(params, List, []),
-        debug = proplists:get_value(debug, List, [])
-    }.
-
-%%-----------------------------------------------------------------------------
 %%
 %% @doc reads config file for receiver, fills in ejm record with configured
 %% values
@@ -105,7 +83,7 @@ fill_config(List) ->
 -spec get_config_list() -> list().
 
 get_config_list() ->
-    application:get_all_env('mcom').
+    application:get_all_env('mcom_server').
 
 %%%----------------------------------------------------------------------------
 %%% EUnit tests

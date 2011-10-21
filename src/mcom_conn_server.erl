@@ -7,10 +7,6 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
 -define(T, 1000).
--record(st, {
-          ref,
-          sock
-          }).
 
 %-------------------------------------------------------------------
 start() ->
@@ -29,8 +25,9 @@ stop(Pid) ->
     gen_server:call(Pid, stop).
 
 %-------------------------------------------------------------------
-init([R]) ->
-    {ok, #st{ref=R}, ?T}.
+init([List]) ->
+    C = mcom_config:get_child_config(List),
+    {ok, C, ?T}.
 
 %-------------------------------------------------------------------
 handle_call(stop, _From, St) ->
@@ -55,24 +52,27 @@ terminate(_, _State) ->
 %-------------------------------------------------------------------
 handle_info(timeout, State) ->
     {noreply, State, ?T};
-handle_info({ok, Sock}, #st{sock=undefined} = State) ->
+handle_info({ok, Sock}, #child{sock=undefined} = State) ->
     Lname = inet:sockname(Sock),
     Rname = inet:peername(Sock),
     Opts = inet:getopts(Sock, [active, reuseaddr]),
     error_logger:info_report({?MODULE, ?LINE, socket_ok, Sock, Lname, Rname, Opts}),
-    {noreply, State#st{sock=Sock}, ?T};
-handle_info(_Other, #st{sock=undefined} = State) ->
+    {noreply, State#child{sock=Sock}, ?T};
+handle_info(_Other, #child{sock=undefined} = State) ->
     error_logger:info_report({?MODULE, ?LINE, socket_discard, _Other}),
     {stop, normal, State};
-handle_info({tcp, WSock, Data} = Msg, #st{sock = WSock} = State) ->
+handle_info({tcp, Sock, Data} = Msg, #child{sock = Sock} = State) ->
     error_logger:info_report({tcp, ?MODULE, ?LINE, Msg}),
     Payload = yaws_api:websocket_unframe_data(Data),
     error_logger:info_report({tcp_payload, ?MODULE, ?LINE, Payload}),
-    yaws_api:websocket_setopts(WSock, [{active, once}]),
+    L = binary_to_list(Payload),
+    New = lists:reverse(L),
+    yaws_api:websocket_send(Sock, New),
+    yaws_api:websocket_setopts(Sock, [{active, once}]),
     {noreply, State, ?T};
-handle_info({tcp_closed, WSock} = Msg, #st{sock = S} = State) when WSock == S ->
+handle_info({tcp_closed, Sock} = Msg, #child{sock = Sock} = State) ->
     error_logger:info_report({tcp_closed, ?MODULE, ?LINE, Msg}),
-    {noreply, State, ?T};
+    {stop, normal, State};
 handle_info(_N, State) ->
     error_logger:info_report({unknown_info, ?MODULE, ?LINE, _N}),
     {noreply, State, ?T}.

@@ -108,6 +108,7 @@ add_child(St) ->
     Id = make_ref(),
     Res = do_start_child(Id),
     error_logger:info_report({Id, Res}),
+    mpln_p_debug:pr({?MODULE, 'add_child', ?LINE, Id, Res}, State#ejm.debug, run, 2),
     case Res of
         {ok, Pid} ->
             {Res, [{Pid, Id} | St]};

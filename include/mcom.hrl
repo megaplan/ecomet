@@ -8,18 +8,8 @@
 
 % state of a websocket worker
 -record(child, {
-    name,
-    port,
-    id,
-    os_pid,
-    duration,
-    from,
-    method,
-    url,
-    host,
-    auth,
-    url_rewrite,
-    params,
+    ref,
+    sock,
     debug
 }).
 
