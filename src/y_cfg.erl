@@ -38,7 +38,7 @@ gconf() ->
         {log_resolve_hostname, false},
         {fail_on_bind_err, true},
         {auth_log, true},
-        {id, eworkman_yaws},
+        {id, mcom_yaws},
         {pick_first_virthost_on_nomatch, true},
         {use_fdsrv, false},
         {subconfigdir, "/var/www/01/conf"}

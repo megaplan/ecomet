@@ -33,7 +33,7 @@
 %%% Exports
 %%%----------------------------------------------------------------------------
 
--export([get_config/0]).
+-export([get_config/0, get_child_config/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -49,7 +49,7 @@
 %%% API
 %%%----------------------------------------------------------------------------
 %%
-%% @doc reads config file for receiver, fills in ejm record with configured
+%% @doc reads config file for receiver, fills in csr record with configured
 %% values
 %% @since 2011-10-14 15:50
 %%
@@ -59,19 +59,45 @@ get_config() ->
     List = get_config_list(),
     fill_config(List).
 
+%%-----------------------------------------------------------------------------
+%%
+%% @doc reads config file for receiver, fills in csr record with configured
+%% values
+%% @since 2011-10-14 15:50
+%%
+get_child_config(List) ->
+    #child{
+        debug = proplists:get_value(debug, List, []),
+        event = make_event_bin(List),
+        id = proplists:get_value(id, List)
+    }.
+
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
 %%
+%% @doc extracts event and converts it to binary
+%%
+make_event_bin(List) ->
+    case proplists:get_value(event, List) of
+        E when is_list(E) -> iolist_to_binary(E);
+        E when is_atom(E) -> atom_to_binary(E, latin1);
+        E                 -> E
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc gets data from the list of key-value tuples and stores it into
-%% ejm record
+%% csr record
 %% @since 2011-10-14 15:50
 %%
 -spec fill_config(list()) -> #csr{}.
 
 fill_config(List) ->
     #csr{
+        yaws_config = proplists:get_value(yaws_config, List, []),
         debug = proplists:get_value(debug, List, []),
+        child_config = proplists:get_value(child_config, List, []),
         log = proplists:get_value(log, List)
     }.
 

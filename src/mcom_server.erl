@@ -12,7 +12,7 @@
 -export([start/0, start_link/0, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
--export([add/0]).
+-export([add/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -28,19 +28,13 @@ init(_) ->
     C = mcom_conf:get_config(),
     prepare_log(C),
     [application:start(X) || X <- [sasl, crypto, public_key, ssl]],
-    start_yaws(),
+    start_yaws(C),
     mpln_p_debug:pr({'init done', ?MODULE, ?LINE}, C#csr.debug, run, 1),
-    {ok, [], ?T}.
+    {ok, C, ?T}.
 
 %%-----------------------------------------------------------------------------
-handle_call(restart, _From, St) ->
-    New = restart_child(St),
-    {reply, New, New, ?T};
-handle_call(restart2, _From, St) ->
-    New = restart_child(St, true),
-    {reply, New, New, ?T};
-handle_call(add, _From, St) ->
-    {Res, New} = add_child(St),
+handle_call({add, Event}, _From, St) ->
+    {Res, New} = add_child(St, Event),
     {reply, Res, New, ?T};
 handle_call(status, _From, St) ->
     {reply, St, St, ?T};
@@ -57,6 +51,7 @@ handle_cast(_, St) ->
 
 %%-----------------------------------------------------------------------------
 terminate(_, _State) ->
+    yaws:stop(),
     ok.
 
 %%-----------------------------------------------------------------------------
@@ -83,102 +78,56 @@ stop() ->
     gen_server:call(?MODULE, stop).
 
 %%-----------------------------------------------------------------------------
-add() ->
-    gen_server:call(?MODULE, add).
+add(Event) ->
+    gen_server:call(?MODULE, {add, Event}).
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
 
--spec do_start_child(reference()) ->
+-spec do_start_child(reference(), list()) ->
                             {ok, pid()} | {ok, pid(), any()} | {error, any()}.
 
-do_start_child(Id) ->
-    Ch_conf = [Id],
+do_start_child(Id, Pars) ->
+    Ch_conf = [Pars],
     StartFunc = {mcom_conn_server, start_link, [Ch_conf]},
     Child = {Id, StartFunc, temporary, 1000, worker, [mcom_conn_server]},
     supervisor:start_child(mcom_conn_sup, Child).
 
 %%-----------------------------------------------------------------------------
--spec add_child(#csr{}) -> {{ok, pid()}, #csr{}}
+-spec add_child(#csr{}, any()) -> {{ok, pid()}, #csr{}}
                            | {{ok, pid(), any()}, #csr{}}
                            | {error, #csr{}}.
 
-add_child(St) ->
+add_child(St, Event) ->
     Id = make_ref(),
-    Res = do_start_child(Id),
-    error_logger:info_report({Id, Res}),
-    mpln_p_debug:pr({?MODULE, 'add_child', ?LINE, Id, Res}, State#ejm.debug, run, 2),
+    Pars = [{id, Id}, {event, Event} | St#csr.child_config],
+    Res = do_start_child(Id, Pars),
+    mpln_p_debug:pr({?MODULE, 'add_child', ?LINE, Id, Pars, Res},
+                    St#csr.debug, child, 4),
     case Res of
         {ok, Pid} ->
-            {Res, [{Pid, Id} | St]};
+            Ch = [{Pid, Id} | St#csr.children],
+            {Res, St#csr{children = Ch}};
         {ok, Pid, _Info} ->
-            {Res, [{Pid, Id} | St]};
+            Ch = [{Pid, Id} | St#csr.children],
+            {Res, St#csr{children = Ch}};
         {error, Reason} ->
             error_logger:info_report({error, Reason}),
             {error, St}
     end.
 
 %%-----------------------------------------------------------------------------
-restart_child(St) ->
-    restart_child(St, false).
-
-%%-----------------------------------------------------------------------------
-restart_child(St, Flag) ->
-    {Pid, Id} = get_rand_pid(St),
-    P_info = process_info(Pid),
-    error_logger:info_report({p_info, Pid, Id, P_info}),
-    Res_t = supervisor:terminate_child(mcom_conn_sup, Id),
-    error_logger:info_report({res_t, Res_t}),
-    Res = start_del_spec(Flag, Id),
-    Cleared = clear_pid(St, Id),
-    case Res of
-        {error, Reason} ->
-            error_logger:info_report({error, Reason}),
-            Cleared;
-        {ok, Pid2} ->
-            New = {Pid2, Id},
-            [New | Cleared];
-        {ok, Pid2, _} ->
-            New = {Pid2, Id},
-            [New | Cleared]
-    end.
-
-%%-----------------------------------------------------------------------------
-start_del_spec(true, Id) ->
-    Res_d = supervisor:delete_child(mcom_conn_sup, Id),
-    error_logger:info_report({res_d, Res_d}),
-    Res = do_start_child(Id),
-    error_logger:info_report({true, res, Res}),
-    Res;
-start_del_spec(false, Id) ->
-    Res = supervisor:restart_child(mcom_conn_sup, Id),
-    error_logger:info_report({false, res, Res}),
-    Res.
-
-%%-----------------------------------------------------------------------------
-get_rand_pid(St) ->
-    Len = length(St),
-    Idx = crypto:rand_uniform(0, Len),
-    lists:nth(Idx+1, St).
-
-%%-----------------------------------------------------------------------------
-clear_pid(St, Id0) ->
-    F = fun ({_, Id}) when Id =:= Id0 ->
-                false;
-            (_) ->
-                true
-    end,
-    lists:filter(F, St).
-
-%%-----------------------------------------------------------------------------
-start_yaws() ->
-    Docroot = "/var/www/01/www4",
-    SconfList = y_cfg:sconf(Docroot),
-    GconfList = y_cfg:gconf(),
-    Id = "test_yaws",
+start_yaws(C) ->
+    Y = C#csr.yaws_config,
+    Docroot = proplists:get_value(docroot, Y, ""),
+    SconfList = proplists:get_value(sconf, Y, []),
+    GconfList = proplists:get_value(gconf, Y, []),
+    Id = proplists:get_value(id, Y, "test_yaws_stub"),
+    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, Y,
+                     Docroot, SconfList, GconfList, Id}, C#csr.debug, run, 4),
     Res = yaws:start_embedded(Docroot, SconfList, GconfList, Id),
-    error_logger:info_report(Res).
+    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, Res}, C#csr.debug, run, 3).
 
 %%-----------------------------------------------------------------------------
 %%
