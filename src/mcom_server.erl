@@ -26,9 +26,8 @@
 
 init(_) ->
     C = mcom_conf:get_config(),
-    prepare_log(C),
-    [application:start(X) || X <- [sasl, crypto, public_key, ssl]],
-    start_yaws(C),
+    prepare_all(C),
+    [application:start(X) || X <- [sasl, crypto, public_key, ssl]], % FIXME
     mpln_p_debug:pr({'init done', ?MODULE, ?LINE}, C#csr.debug, run, 1),
     {ok, C, ?T}.
 
@@ -101,7 +100,8 @@ do_start_child(Id, Pars) ->
 
 add_child(St, Event) ->
     Id = make_ref(),
-    Pars = [{id, Id}, {event, Event} | St#csr.child_config],
+    Pars = [{id, Id}, {event, Event}, {conn, St#csr.conn}
+            | St#csr.child_config],
     Res = do_start_child(Id, Pars),
     mpln_p_debug:pr({?MODULE, 'add_child', ?LINE, Id, Pars, Res},
                     St#csr.debug, child, 4),
@@ -140,5 +140,27 @@ prepare_log(#csr{log=undefined}) ->
     ok;
 prepare_log(#csr{log=Log}) ->
     mpln_misc_log:prepare_log(Log).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc prepares all the necessary things (log, rabbit, yaws, etc)
+%%
+-spec prepare_all(#csr{}) -> #csr{}.
+
+prepare_all(C) ->
+    prepare_log(C),
+    New = prepare_rabbit(C),
+    start_yaws(C),
+    New.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc prepares rabbit connection
+%%
+-spec prepare_rabbit(#csr{}) -> #csr{}.
+
+prepare_rabbit(C) ->
+    Conn = mcom_rb:start(C#csr.rses),
+    C#csr{conn=Conn}.
 
 %%-----------------------------------------------------------------------------

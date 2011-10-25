@@ -44,6 +44,7 @@
 -endif.
 
 -include("mcom.hrl").
+-include("rabbit_session.hrl").
 
 %%%----------------------------------------------------------------------------
 %%% API
@@ -67,6 +68,7 @@ get_config() ->
 %%
 get_child_config(List) ->
     #child{
+        conn = proplists:get_value(conn, List, #rses{}),
         debug = proplists:get_value(debug, List, []),
         event = make_event_bin(List),
         id = proplists:get_value(id, List)
@@ -95,6 +97,7 @@ make_event_bin(List) ->
 
 fill_config(List) ->
     #csr{
+        rses = mcom_conf_rabbit:stuff_rabbit_with(List),
         yaws_config = proplists:get_value(yaws_config, List, []),
         debug = proplists:get_value(debug, List, []),
         child_config = proplists:get_value(child_config, List, []),

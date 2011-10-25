@@ -53,7 +53,7 @@
 %% queue, exchange, binding.
 %% @since 2011-07-15
 %%
--spec start(#rses{}) -> {ok, #conn{}}.
+-spec start(#rses{}) -> #conn{}.
 
 start(Rses) ->
     Host = Rses#rses.host,
@@ -86,11 +86,10 @@ start(Rses) ->
         nowait = false, arguments = []},
     #'exchange.declare_ok'{} = amqp_channel:call(Channel, ExchangeDeclare),
 
-    {ok, #conn{channel=Channel,
+    #conn{channel=Channel,
         connection=Connection,
         exchange=X,
-        ticket=Ticket}
-    }.
+        ticket=Ticket}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -129,6 +128,8 @@ send_ack(Conn, Tag) ->
 %% @doc creates queue, binds it to routing key
 %% @since 2011-10-25 14:40
 %%
+-spec prepare_queue(#conn{}, binary()) -> binary().
+
 prepare_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Bind_key) ->
 
     QueueDeclare = #'queue.declare'{ticket = Ticket,

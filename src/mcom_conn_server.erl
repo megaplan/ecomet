@@ -93,10 +93,14 @@ code_change(_Old_vsn, State, _Extra) ->
     {ok, State}.
 
 %------------------------------------------------------------------------------
+-spec prepare_all(#child{}) -> #child{}.
+
 prepare_all(C) ->
     prepare_rabbit(C).
 
 %------------------------------------------------------------------------------
+-spec prepare_rabbit(#child{}) -> #child{}.
+
 prepare_rabbit(#child{conn=Conn, event=Event} = C) ->
     Consumer_tag = mcom_rb:prepare_queue(Conn, Event),
     C#child{conn=Conn#conn{consumer_tag=Consumer_tag}}.

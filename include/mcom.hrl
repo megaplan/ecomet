@@ -31,6 +31,8 @@
     child_config = [],
     yaws_config = [],
     log,
+    conn, % #conn{}
+    rses, % #rses{}
     debug
 }).
 
