@@ -4,6 +4,7 @@
 	{vsn, "1.0"},
 	{modules, [
 		mcom_conf,
+		mcom_conf_rabbit,
 		mcom_conn_server,
 		mcom_conn_sup,
 		mcom_handler_ws,
