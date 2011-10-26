@@ -78,32 +78,44 @@ init([List]) ->
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 handle_call(status, _From, St) ->
-    {reply, St, St, ?T};
+    New = do_smth(St),
+    {reply, St, New, ?T};
 handle_call(_N, _From, St) ->
     mpln_p_debug:pr({?MODULE, call_other, ?LINE, _N}, St#child.debug, run, 2),
-    {reply, {error, unknown_request}, St, ?T}.
+    New = do_smth(St),
+    {reply, {error, unknown_request}, New, ?T}.
 
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
     {stop, normal, St};
 handle_cast(_N, St) ->
     mpln_p_debug:pr({?MODULE, cast_other, ?LINE, _N}, St#child.debug, run, 2),
-    {noreply, St, ?T}.
+    New = do_smth(St),
+    {noreply, New, ?T}.
 
 %%-----------------------------------------------------------------------------
 terminate(_, _State) ->
     ok.
 
 %%-----------------------------------------------------------------------------
+handle_info({#'basic.deliver'{delivery_tag = Tag}, Content} = _Req, St) ->
+    mpln_p_debug:pr({?MODULE, deliver, ?LINE, _Req}, St#child.debug, rb_msg, 6),
+    Payload = Content#amqp_msg.payload,
+    mcom_rb:send_ack(St#child.conn, Tag),
+    St_r = mcom_handler_ws:do_rabbit_msg(St, Payload),
+    New = do_smth(St_r),
+    {noreply, New, ?T};
 handle_info(#'basic.consume_ok'{consumer_tag = Tag},
             #child{conn=#conn{consumer_tag = Tag, consumer=undefined}} = St) ->
     mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Tag}, St#child.debug, run, 2),
-    check_start_time(St);
+    New = do_smth(St),
+    check_start_time(New);
 handle_info(timeout, #child{conn=#conn{consumer=undefined}} = St) ->
     mpln_p_debug:pr({?MODULE, consume_extra, ?LINE}, St#child.debug, run, 0),
-    check_start_time(St);
-handle_info(timeout, State) ->
-    New = do_smth(State),
+    New = do_smth(St),
+    check_start_time(New);
+handle_info(timeout, St) ->
+    New = do_smth(St),
     {noreply, New, ?T};
 handle_info({ok, Sock}, #child{sock=undefined} = State) ->
     Lname = inet:sockname(Sock),
@@ -111,14 +123,17 @@ handle_info({ok, Sock}, #child{sock=undefined} = State) ->
     Opts = inet:getopts(Sock, [active, reuseaddr]),
     mpln_p_debug:pr({?MODULE, socket_ok, ?LINE, Sock, Lname, Rname, Opts},
                    State#child.debug, run, 2),
-    {noreply, State#child{sock=Sock}, ?T};
+    New = do_smth(State),
+    {noreply, New#child{sock=Sock}, ?T};
 handle_info(_Other, #child{sock=undefined} = State) ->
     mpln_p_debug:pr({?MODULE, socket_discard, ?LINE, _Other},
                     State#child.debug, run, 2),
     {stop, normal, State};
 handle_info({tcp, Sock, Data} = Msg, #child{sock = Sock} = State) ->
-    mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Msg}, State#child.debug, msg, 6),
-    New = mcom_handler_ws:send_msg_q(State, Sock, Data),
+    mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Msg},
+                    State#child.debug, web_msg, 6),
+    St_m= mcom_handler_ws:send_msg_q(State, Data),
+    New = do_smth(St_m),
     {noreply, New, ?T};
 handle_info({tcp_closed, Sock} = Msg, #child{sock = Sock} = State) ->
     mpln_p_debug:pr({?MODULE, tcp_closed, ?LINE, Msg}, State#child.debug,
@@ -127,7 +142,8 @@ handle_info({tcp_closed, Sock} = Msg, #child{sock = Sock} = State) ->
 handle_info(_N, State) ->
     mpln_p_debug:pr({?MODULE, info_other, ?LINE, _N}, State#child.debug,
                    run, 2),
-    {noreply, State, ?T}.
+    New = do_smth(State),
+    {noreply, New, ?T}.
 
 %%-----------------------------------------------------------------------------
 code_change(_Old_vsn, State, _Extra) ->
