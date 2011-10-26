@@ -174,8 +174,9 @@ prepare_all(C) ->
 %%-----------------------------------------------------------------------------
 -spec prepare_rabbit(#child{}) -> #child{}.
 
-prepare_rabbit(#child{conn=Conn, event=Event} = C) ->
-    Consumer_tag = mcom_rb:prepare_queue(Conn, Event),
+prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
+    mpln_p_debug:pr({?MODULE, prepare_rabbit, ?LINE, C}, C#child.debug, run, 6),
+    Consumer_tag = mcom_rb:prepare_queue(Conn, Event, No_local),
     C#child{start_time=now(), conn=Conn#conn{consumer_tag=Consumer_tag}}.
 
 %%-----------------------------------------------------------------------------

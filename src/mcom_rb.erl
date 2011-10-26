@@ -41,9 +41,9 @@
 %%%----------------------------------------------------------------------------
 
 -export([start/1]).
--export([teardown/1, send_reply/4]).
+-export([teardown/1, teardown_conn/1, send_message/4]).
 -export([send_ack/2]).
--export([prepare_queue/2]).
+-export([prepare_queue/3]).
 
 %%%----------------------------------------------------------------------------
 %%% API
@@ -105,13 +105,13 @@ teardown(#conn{connection = Connection,
 .
 %%-----------------------------------------------------------------------------
 %%
-%% @doc sends reply with particular routing key
+%% @doc cancels consumer, closes channel, closes connection
 %% @since 2011-10-25 13:30
 %%
-send_reply(Channel, X, Rt_key, Payload) ->
-    io:format("send_reply rt, payload:~n~p~n~p~n", [Rt_key, Payload]),
-    send_message(Channel, X, Rt_key, Payload)
-.
+teardown_conn(#conn{connection = Connection, channel = Channel}) ->
+    amqp_channel:close(Channel),
+    amqp_connection:close(Connection).
+
 %%-----------------------------------------------------------------------------
 %%
 %% @doc sends acknowledge for AMQP message.
@@ -125,12 +125,24 @@ send_ack(Conn, Tag) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc publishes AMQP message with given payload to exchange
+%% @since 2011-10-25 13:30
+%%
+-spec send_message(any(), any(), any(), any()) -> ok.
+
+send_message(Channel, X, RoutingKey, Payload) ->
+    Publish = #'basic.publish'{exchange = X, routing_key = RoutingKey},
+    amqp_channel:cast(Channel, Publish, #amqp_msg{payload = Payload}).
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc creates queue, binds it to routing key
 %% @since 2011-10-25 14:40
 %%
--spec prepare_queue(#conn{}, binary()) -> binary().
+-spec prepare_queue(#conn{}, binary(), boolean()) -> binary().
 
-prepare_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Bind_key) ->
+prepare_queue(#conn{channel=Channel, exchange=X, ticket=Ticket},
+              Bind_key, No_local) ->
 
     QueueDeclare = #'queue.declare'{ticket = Ticket,
         passive = false, durable = true,
@@ -145,28 +157,21 @@ prepare_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Bind_key) ->
         nowait = false, arguments = []},
     #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBind),
 
-    setup_consumer(Channel, Q).
+    setup_consumer(Channel, Q, No_local).
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
 %%
-%% @doc publishes AMQP message with given payload to exchange
-%% @since 2011-10-25 13:30
-%%
--spec send_message(any(), any(), any(), any()) -> ok.
-
-send_message(Channel, X, RoutingKey, Payload) ->
-    Publish = #'basic.publish'{exchange = X, routing_key = RoutingKey},
-    amqp_channel:cast(Channel, Publish, #amqp_msg{payload = Payload}).
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc setups consumer for given queue at given exchange
 %% @since 2011-10-25 13:30
 %%
-setup_consumer(Channel, Q) ->
-    BasicConsume = #'basic.consume'{queue = Q, no_ack = false },
+-spec setup_consumer(any(), any(), boolean()) -> any().
+
+setup_consumer(Channel, Q, No_local) ->
+    BasicConsume = #'basic.consume'{queue = Q, no_ack = false,
+                                    no_local = No_local
+                                   },
     #'basic.consume_ok'{consumer_tag = ConsumerTag}
         = amqp_channel:subscribe(Channel, BasicConsume, self()),
     ConsumerTag

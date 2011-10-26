@@ -12,7 +12,7 @@
 -export([start/0, start_link/0, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
--export([add/1]).
+-export([add/1, add/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -32,9 +32,9 @@ init(_) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
-handle_call({add, Event}, _From, St) ->
+handle_call({add, Event, No_local}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_child', ?LINE}, St#csr.debug, run, 2),
-    {Res, New} = add_child(St, Event),
+    {Res, New} = add_child(St, Event, No_local),
     {reply, Res, New, ?T};
 handle_call(status, _From, St) ->
     {reply, St, St, ?T};
@@ -79,7 +79,13 @@ stop() ->
 
 %%-----------------------------------------------------------------------------
 add(Event) ->
-    gen_server:call(?MODULE, {add, Event}).
+    add(Event, true).
+
+%%-----------------------------------------------------------------------------
+add(Event, true) ->
+    gen_server:call(?MODULE, {add, Event, true});
+add(Event, _) ->
+    gen_server:call(?MODULE, {add, Event, false}).
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions
@@ -95,13 +101,13 @@ do_start_child(Id, Pars) ->
     supervisor:start_child(mcom_conn_sup, Child).
 
 %%-----------------------------------------------------------------------------
--spec add_child(#csr{}, any()) -> {{ok, pid()}, #csr{}}
+-spec add_child(#csr{}, any(), boolean()) -> {{ok, pid()}, #csr{}}
                            | {{ok, pid(), any()}, #csr{}}
                            | {error, #csr{}}.
 
-add_child(St, Event) ->
+add_child(St, Event, No_local) ->
     Id = make_ref(),
-    Pars = [{id, Id}, {event, Event}, {conn, St#csr.conn}
+    Pars = [{id, Id}, {event, Event}, {no_local, No_local}, {conn, St#csr.conn}
             | St#csr.child_config],
     Res = do_start_child(Id, Pars),
     mpln_p_debug:pr({?MODULE, "start child result", ?LINE, Id, Pars, Res},
@@ -114,8 +120,9 @@ add_child(St, Event) ->
             Ch = [{Pid, Id} | St#csr.children],
             {Res, St#csr{children = Ch}};
         {error, Reason} ->
-            error_logger:info_report({error, Reason}),
-            {error, St}
+            mpln_p_debug:pr({?MODULE, "start child error", ?LINE, Reason},
+                            St#csr.debug, child, 1),
+            check_error(St, Reason)
     end.
 
 %%-----------------------------------------------------------------------------
@@ -163,5 +170,20 @@ prepare_all(C) ->
 prepare_rabbit(C) ->
     Conn = mcom_rb:start(C#csr.rses),
     C#csr{conn=Conn}.
+
+%%-----------------------------------------------------------------------------
+check_error(St, {{noproc, _Reason}, _Other}) ->
+    mpln_p_debug:pr({?MODULE, "check_error", ?LINE}, St#csr.debug, run, 2),
+    New = reconnect(St),
+    mpln_p_debug:pr({?MODULE, "check_error new st", ?LINE, New}, St#csr.debug, run, 2),
+    {error, New};
+check_error(St, _Other) ->
+    mpln_p_debug:pr({?MODULE, "check_error other", ?LINE}, St#csr.debug, run, 2),
+    {error, St}.
+
+%%-----------------------------------------------------------------------------
+reconnect(St) ->
+    mcom_rb:teardown_conn(St#csr.conn),
+    prepare_rabbit(St).
 
 %%-----------------------------------------------------------------------------

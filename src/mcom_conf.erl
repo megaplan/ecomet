@@ -68,6 +68,7 @@ get_config() ->
 %%
 get_child_config(List) ->
     #child{
+        no_local = proplists:get_value(no_local, List, false),
         conn = proplists:get_value(conn, List, #rses{}),
         debug = proplists:get_value(debug, List, []),
         event = make_event_bin(List),

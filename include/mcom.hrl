@@ -14,6 +14,7 @@
     sock,
     debug,
     conn, % #conn{}
+    no_local = false, % for amqp consumer setup
     event
 }).
 
