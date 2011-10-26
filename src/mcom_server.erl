@@ -26,13 +26,14 @@
 
 init(_) ->
     C = mcom_conf:get_config(),
-    prepare_all(C),
+    New = prepare_all(C),
     [application:start(X) || X <- [sasl, crypto, public_key, ssl]], % FIXME
-    mpln_p_debug:pr({'init done', ?MODULE, ?LINE}, C#csr.debug, run, 1),
-    {ok, C, ?T}.
+    mpln_p_debug:pr({'init done', ?MODULE, ?LINE}, New#csr.debug, run, 1),
+    {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
 handle_call({add, Event}, _From, St) ->
+    mpln_p_debug:pr({?MODULE, 'add_child', ?LINE}, St#csr.debug, run, 2),
     {Res, New} = add_child(St, Event),
     {reply, Res, New, ?T};
 handle_call(status, _From, St) ->
@@ -103,7 +104,7 @@ add_child(St, Event) ->
     Pars = [{id, Id}, {event, Event}, {conn, St#csr.conn}
             | St#csr.child_config],
     Res = do_start_child(Id, Pars),
-    mpln_p_debug:pr({?MODULE, 'add_child', ?LINE, Id, Pars, Res},
+    mpln_p_debug:pr({?MODULE, "start child result", ?LINE, Id, Pars, Res},
                     St#csr.debug, child, 4),
     case Res of
         {ok, Pid} ->

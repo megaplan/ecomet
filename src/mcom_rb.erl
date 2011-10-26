@@ -145,8 +145,7 @@ prepare_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Bind_key) ->
         nowait = false, arguments = []},
     #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBind),
 
-    {ok, ConsumerTag} = setup_consumer(Channel, Q),
-    ConsumerTag.
+    setup_consumer(Channel, Q).
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions

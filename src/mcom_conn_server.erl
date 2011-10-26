@@ -71,6 +71,7 @@ stop(Pid) ->
 init([List]) ->
     C = mcom_conf:get_child_config(List),
     New = prepare_all(C),
+    mpln_p_debug:pr({?MODULE, init_done, ?LINE}, C#child.debug, run, 2),
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
@@ -95,10 +96,12 @@ terminate(_, _State) ->
 
 %%-----------------------------------------------------------------------------
 handle_info(#'basic.consume_ok'{consumer_tag = Tag},
-            #child{conn=#conn{consumer_tag = Tag, consumer=undefined}}=State) ->
-    check_start_time(State);
-handle_info(timeout, #child{conn=#conn{consumer=undefined}} = State) ->
-    check_start_time(State);
+            #child{conn=#conn{consumer_tag = Tag, consumer=undefined}} = St) ->
+    mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Tag}, St#child.debug, run, 2),
+    check_start_time(St);
+handle_info(timeout, #child{conn=#conn{consumer=undefined}} = St) ->
+    mpln_p_debug:pr({?MODULE, consume_extra, ?LINE}, St#child.debug, run, 0),
+    check_start_time(St);
 handle_info(timeout, State) ->
     New = do_smth(State),
     {noreply, New, ?T};
@@ -114,8 +117,7 @@ handle_info(_Other, #child{sock=undefined} = State) ->
                     State#child.debug, run, 2),
     {stop, normal, State};
 handle_info({tcp, Sock, Data} = Msg, #child{sock = Sock} = State) ->
-    mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Msg}, State#child.debug,
-                   run, 6),
+    mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Msg}, State#child.debug, msg, 6),
     New = mcom_handler_ws:send_msg_q(State, Sock, Data),
     {noreply, New, ?T};
 handle_info({tcp_closed, Sock} = Msg, #child{sock = Sock} = State) ->
@@ -144,7 +146,7 @@ prepare_all(C) ->
 
 prepare_rabbit(#child{conn=Conn, event=Event} = C) ->
     Consumer_tag = mcom_rb:prepare_queue(Conn, Event),
-    C#child{conn=Conn#conn{consumer_tag=Consumer_tag}}.
+    C#child{start_time=now(), conn=Conn#conn{consumer_tag=Consumer_tag}}.
 
 %%-----------------------------------------------------------------------------
 check_start_time(#child{start_time = T1} = State) ->
