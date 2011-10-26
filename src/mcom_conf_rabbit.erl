@@ -58,9 +58,9 @@ stuff_rabbit_with(List) ->
         'user' = proplists:get_value(user, R, <<"guest">>),
         'password' = proplists:get_value(password, R, <<"guest">>),
         'vhost' = proplists:get_value(vhost, R, <<"/">>),
-        'exchange' = proplists:get_value(exchange, R, <<"megacom">>),
+        'exchange' = proplists:get_value(exchange, R, <<"negacom">>),
         'exchange_type' = proplists:get_value(exchange_type, R, <<"topic">>),
-        'queue' = proplists:get_value(queue, R, <<"mc_queue_2">>),
+        'queue' = proplists:get_value(queue, R, <<"mc_queue_3">>),
         'routing_key' = proplists:get_value(routing_key, R, <<"test_event">>)
     }
 .

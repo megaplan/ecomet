@@ -51,7 +51,7 @@
 %%
 %% @doc does all the AMQP client preparations, namely: connection, channel,
 %% queue, exchange, binding.
-%% @since 2011-07-15
+%% @since 2011-10-25 13:30
 %%
 -spec start(#rses{}) -> #conn{}.
 
@@ -94,7 +94,7 @@ start(Rses) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc cancels consumer, closes channel, closes connection
-%% @since 2011-07-15
+%% @since 2011-10-25 13:30
 %%
 teardown(#conn{connection = Connection,
         channel = Channel,
@@ -106,7 +106,7 @@ teardown(#conn{connection = Connection,
 %%-----------------------------------------------------------------------------
 %%
 %% @doc sends reply with particular routing key
-%% @since 2011-07-15
+%% @since 2011-10-25 13:30
 %%
 send_reply(Channel, X, Rt_key, Payload) ->
     io:format("send_reply rt, payload:~n~p~n~p~n", [Rt_key, Payload]),
@@ -115,7 +115,7 @@ send_reply(Channel, X, Rt_key, Payload) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc sends acknowledge for AMQP message.
-%% @since 2011-07-15
+%% @since 2011-10-25 13:30
 %%
 -spec send_ack(#conn{}, any()) -> any().
 
@@ -153,7 +153,7 @@ prepare_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Bind_key) ->
 %%%----------------------------------------------------------------------------
 %%
 %% @doc publishes AMQP message with given payload to exchange
-%% @since 2011-07-15
+%% @since 2011-10-25 13:30
 %%
 -spec send_message(any(), any(), any(), any()) -> ok.
 
@@ -164,7 +164,7 @@ send_message(Channel, X, RoutingKey, Payload) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc setups consumer for given queue at given exchange
-%% @since 2011-07-15
+%% @since 2011-10-25 13:30
 %%
 setup_consumer(Channel, Q) ->
     BasicConsume = #'basic.consume'{queue = Q, no_ack = false },
@@ -175,7 +175,7 @@ setup_consumer(Channel, Q) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc cancels consumer
-%% @since 2011-07-15
+%% @since 2011-10-25 13:30
 %%
 cancel_consumer(Channel, ConsumerTag) ->
     % After the consumer is finished interacting with the queue,

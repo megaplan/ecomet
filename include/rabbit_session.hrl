@@ -7,9 +7,9 @@
     'user' = <<"guest">>,
     'password' = <<"guest">>,
     'vhost' = <<"/">>,
-    'exchange' = <<"test_e">>,
+    'exchange' = <<"negacom">>,
     'exchange_type' = <<"topic">>,
-    'queue' = <<"test_q">>,
+    'queue' = <<"mc_queue">>,
     'routing_key' = <<"test_topless">>
 }).
 
