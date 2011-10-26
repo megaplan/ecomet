@@ -98,6 +98,8 @@ terminate(_, _State) ->
     ok.
 
 %%-----------------------------------------------------------------------------
+
+%% message from amqp
 handle_info({#'basic.deliver'{delivery_tag = Tag}, Content} = _Req, St) ->
     mpln_p_debug:pr({?MODULE, deliver, ?LINE, _Req}, St#child.debug, rb_msg, 6),
     Payload = Content#amqp_msg.payload,
@@ -105,18 +107,25 @@ handle_info({#'basic.deliver'{delivery_tag = Tag}, Content} = _Req, St) ->
     St_r = mcom_handler_ws:do_rabbit_msg(St, Payload),
     New = do_smth(St_r),
     {noreply, New, ?T};
+
+%% amqp setup consumer confirmation
 handle_info(#'basic.consume_ok'{consumer_tag = Tag},
             #child{conn=#conn{consumer_tag = Tag, consumer=undefined}} = St) ->
     mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Tag}, St#child.debug, run, 2),
     New = do_smth(St),
     check_start_time(New);
+
+%% wrong amqp setup consumer confirmation
 handle_info(timeout, #child{conn=#conn{consumer=undefined}} = St) ->
     mpln_p_debug:pr({?MODULE, consume_extra, ?LINE}, St#child.debug, run, 0),
     New = do_smth(St),
     check_start_time(New);
+
 handle_info(timeout, St) ->
     New = do_smth(St),
     {noreply, New, ?T};
+
+%% init websocket ok
 handle_info({ok, Sock}, #child{sock=undefined} = State) ->
     Lname = inet:sockname(Sock),
     Rname = inet:peername(Sock),
@@ -125,24 +134,29 @@ handle_info({ok, Sock}, #child{sock=undefined} = State) ->
                    State#child.debug, run, 2),
     New = do_smth(State),
     {noreply, New#child{sock=Sock}, ?T};
+
+%% init websocket failed
 handle_info(_Other, #child{sock=undefined} = State) ->
     mpln_p_debug:pr({?MODULE, socket_discard, ?LINE, _Other},
                     State#child.debug, run, 2),
     {stop, normal, State};
+
+%% data from websocket
 handle_info({tcp, Sock, Data} = Msg, #child{sock = Sock} = State) ->
     mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Msg},
                     State#child.debug, web_msg, 6),
     St_m= mcom_handler_ws:send_msg_q(State, Data),
     New = do_smth(St_m),
     {noreply, New, ?T};
-handle_info({tcp_closed, Sock} = Msg, #child{sock = Sock} = State) ->
-    mpln_p_debug:pr({?MODULE, tcp_closed, ?LINE, Msg}, State#child.debug,
-                   run, 2),
-    {stop, normal, State};
-handle_info(_N, State) ->
-    mpln_p_debug:pr({?MODULE, info_other, ?LINE, _N}, State#child.debug,
-                   run, 2),
-    New = do_smth(State),
+
+%% websocket closed
+handle_info({tcp_closed, Sock} = Msg, #child{sock = Sock} = St) ->
+    mpln_p_debug:pr({?MODULE, tcp_closed, ?LINE, Msg}, St#child.debug, run, 2),
+    {stop, normal, St};
+
+handle_info(_N, St) ->
+    mpln_p_debug:pr({?MODULE, info_other, ?LINE, _N}, St#child.debug, run, 2),
+    New = do_smth(St),
     {noreply, New, ?T}.
 
 %%-----------------------------------------------------------------------------
