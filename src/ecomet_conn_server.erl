@@ -1,5 +1,5 @@
 %%%
-%%% mcom_conn_server: mcom one connection server
+%%% ecomet_conn_server: ecomet one connection server
 %%%
 %%% Copyright (c) 2011 Megaplan Ltd. (Russia)
 %%%
@@ -28,7 +28,7 @@
 %%% data from/to client and amqp server
 %%%
 
--module(mcom_conn_server).
+-module(ecomet_conn_server).
 -behaviour(gen_server).
 
 %%%----------------------------------------------------------------------------
@@ -43,7 +43,7 @@
 %%% Includes
 %%%----------------------------------------------------------------------------
 
--include("mcom.hrl").
+-include("ecomet.hrl").
 -include("rabbit_session.hrl").
 -include_lib("amqp_client.hrl").
 
@@ -69,7 +69,7 @@ stop(Pid) ->
 %%% gen_server callbacks
 %%%----------------------------------------------------------------------------
 init([List]) ->
-    C = mcom_conf:get_child_config(List),
+    C = ecomet_conf:get_child_config(List),
     New = prepare_all(C),
     mpln_p_debug:pr({?MODULE, init_done, ?LINE}, C#child.debug, run, 2),
     {ok, New, ?T}.
@@ -103,8 +103,8 @@ terminate(_, _State) ->
 handle_info({#'basic.deliver'{delivery_tag = Tag}, Content} = _Req, St) ->
     mpln_p_debug:pr({?MODULE, deliver, ?LINE, _Req}, St#child.debug, rb_msg, 6),
     Payload = Content#amqp_msg.payload,
-    mcom_rb:send_ack(St#child.conn, Tag),
-    St_r = mcom_handler_ws:do_rabbit_msg(St, Payload),
+    ecomet_rb:send_ack(St#child.conn, Tag),
+    St_r = ecomet_handler_ws:do_rabbit_msg(St, Payload),
     New = do_smth(St_r),
     {noreply, New, ?T};
 
@@ -145,7 +145,7 @@ handle_info(_Other, #child{sock=undefined} = State) ->
 handle_info({tcp, Sock, Data} = Msg, #child{sock = Sock} = State) ->
     mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Msg},
                     State#child.debug, web_msg, 6),
-    St_m= mcom_handler_ws:send_msg_q(State, Data),
+    St_m= ecomet_handler_ws:send_msg_q(State, Data),
     New = do_smth(St_m),
     {noreply, New, ?T};
 
@@ -177,7 +177,7 @@ prepare_all(C) ->
 
 prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     mpln_p_debug:pr({?MODULE, prepare_rabbit, ?LINE, C}, C#child.debug, run, 6),
-    Consumer_tag = mcom_rb:prepare_queue(Conn, Event, No_local),
+    Consumer_tag = ecomet_rb:prepare_queue(Conn, Event, No_local),
     C#child{start_time=now(), conn=Conn#conn{consumer_tag=Consumer_tag}}.
 
 %%-----------------------------------------------------------------------------

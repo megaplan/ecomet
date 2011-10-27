@@ -1,5 +1,5 @@
 %%%
-%%% mcom_server: server to create children to serve new websocket requests
+%%% ecomet_server: server to create children to serve new websocket requests
 %%%
 %%% Copyright (c) 2011 Megaplan Ltd. (Russia)
 %%%
@@ -28,7 +28,7 @@
 %%% to rabbit and creates children with connection provided.
 %%%
 
--module(mcom_server).
+-module(ecomet_server).
 -behaviour(gen_server).
 
 %%%----------------------------------------------------------------------------
@@ -44,14 +44,14 @@
 %%% Includes
 %%%----------------------------------------------------------------------------
 
--include("mcom.hrl").
+-include("ecomet.hrl").
 
 %%%----------------------------------------------------------------------------
 %%% gen_server callbacks
 %%%----------------------------------------------------------------------------
 
 init(_) ->
-    C = mcom_conf:get_config(),
+    C = ecomet_conf:get_config(),
     New = prepare_all(C),
     [application:start(X) || X <- [sasl, crypto, public_key, ssl]], % FIXME
     mpln_p_debug:pr({'init done', ?MODULE, ?LINE}, New#csr.debug, run, 1),
@@ -137,9 +137,9 @@ add(Event, _) ->
 
 do_start_child(Id, Pars) ->
     Ch_conf = [Pars],
-    StartFunc = {mcom_conn_server, start_link, [Ch_conf]},
-    Child = {Id, StartFunc, temporary, 1000, worker, [mcom_conn_server]},
-    supervisor:start_child(mcom_conn_sup, Child).
+    StartFunc = {ecomet_conn_server, start_link, [Ch_conf]},
+    Child = {Id, StartFunc, temporary, 1000, worker, [ecomet_conn_server]},
+    supervisor:start_child(ecomet_conn_sup, Child).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -215,7 +215,7 @@ prepare_all(C) ->
 -spec prepare_rabbit(#csr{}) -> #csr{}.
 
 prepare_rabbit(C) ->
-    Conn = mcom_rb:start(C#csr.rses),
+    Conn = ecomet_rb:start(C#csr.rses),
     C#csr{conn=Conn}.
 
 %%-----------------------------------------------------------------------------
@@ -238,7 +238,7 @@ check_error(St, _Other) ->
 %% @doc does reconnect to rabbit
 %%
 reconnect(St) ->
-    mcom_rb:teardown_conn(St#csr.conn),
+    ecomet_rb:teardown_conn(St#csr.conn),
     prepare_rabbit(St).
 
 %%-----------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 %%%
-%%% mcom_conf: functions for config
+%%% ecomet_conf: functions for config
 %%%
 %%% Copyright (c) 2011 Megaplan Ltd. (Russia)
 %%%
@@ -27,7 +27,7 @@
 %%% @doc functions related to config file read, config processing
 %%%
 
--module(mcom_conf).
+-module(ecomet_conf).
 
 %%%----------------------------------------------------------------------------
 %%% Exports
@@ -43,7 +43,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--include("mcom.hrl").
+-include("ecomet.hrl").
 -include("rabbit_session.hrl").
 
 %%%----------------------------------------------------------------------------
@@ -98,7 +98,7 @@ make_event_bin(List) ->
 
 fill_config(List) ->
     #csr{
-        rses = mcom_conf_rabbit:stuff_rabbit_with(List),
+        rses = ecomet_conf_rabbit:stuff_rabbit_with(List),
         yaws_config = proplists:get_value(yaws_config, List, []),
         debug = proplists:get_value(debug, List, []),
         child_config = proplists:get_value(child_config, List, []),
@@ -113,7 +113,7 @@ fill_config(List) ->
 -spec get_config_list() -> list().
 
 get_config_list() ->
-    application:get_all_env('mcom_server').
+    application:get_all_env('ecomet_server').
 
 %%%----------------------------------------------------------------------------
 %%% EUnit tests

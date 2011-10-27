@@ -9,7 +9,7 @@
     'vhost' = <<"/">>,
     'exchange' = <<"negacom">>,
     'exchange_type' = <<"topic">>,
-    'queue' = <<"mc_queue">>,
+    'queue' = <<"ec_queue">>,
     'routing_key' = <<"test_topless">>
 }).
 

@@ -1,5 +1,5 @@
 %%%
-%%% mcom_rb: RabbitMQ interaction
+%%% ecomet_rb: RabbitMQ interaction
 %%%
 %%% Copyright (c) 2011 Megaplan Ltd. (Russia)
 %%%
@@ -27,7 +27,7 @@
 %%% @doc RabbitMQ interaction
 %%%
 
--module(mcom_rb).
+-module(ecomet_rb).
 
 %%%----------------------------------------------------------------------------
 %%% Includes

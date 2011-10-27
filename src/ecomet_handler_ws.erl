@@ -1,5 +1,5 @@
 %%%
-%%% mcom_conf_rabbit: AMQP client config functions
+%%% ecomet_handler_ws: handler for one websocket
 %%%
 %%% Copyright (c) 2011 Megaplan Ltd. (Russia)
 %%%
@@ -22,46 +22,65 @@
 %%% SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 %%%
 %%% @author arkdro <arkdro@gmail.com>
-%%% @since 2011-10-25 17:30
+%%% @since 2011-10-14 15:40
 %%% @license MIT
-%%% @doc AMQP client config functions
+%%% @doc handles one websocket: sends/receives data to/from client/amqp
 %%%
 
--module(mcom_conf_rabbit).
+-module(ecomet_handler_ws).
 
 %%%----------------------------------------------------------------------------
 %%% Exports
 %%%----------------------------------------------------------------------------
 
--export([stuff_rabbit_with/1]).
+-export([send_msg_q/2, do_rabbit_msg/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
 %%%----------------------------------------------------------------------------
 
+-include("ecomet.hrl").
 -include("rabbit_session.hrl").
 
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
 %%
-%% @doc fills in an rses record with rabbit connection parameters.
-%% @since 2011-10-25 17:30
+%% @doc sends data received from websocket to amqp
+%% @since 2011-10-26 15:40
 %%
--spec stuff_rabbit_with(list()) -> #rses{}.
+send_msg_q(#child{conn=Conn, event=Rt_key, id_r=Id} = St, Data) ->
+    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, St}, St#child.debug, run, 6),
+    Payload = yaws_api:websocket_unframe_data(Data),
+    L = binary_to_list(Payload),
+    New = lists:reverse(L),
+    New_r = list_to_binary(New),
+    Res_data = <<Id/binary, New_r/binary>>,
+    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, Res_data}, St#child.debug, run, 6),
+    ecomet_rb:send_message(Conn#conn.channel, Conn#conn.exchange, Rt_key, Res_data),
+    St.
 
-stuff_rabbit_with(List) ->
-    R = proplists:get_value(rabbit, List, []),
-    #rses{
-        'host' = proplists:get_value(host, R, '127.0.0.1'),
-        'port' = proplists:get_value(port, R, 5672),
-        'user' = proplists:get_value(user, R, <<"guest">>),
-        'password' = proplists:get_value(password, R, <<"guest">>),
-        'vhost' = proplists:get_value(vhost, R, <<"/">>),
-        'exchange' = proplists:get_value(exchange, R, <<"negacom">>),
-        'exchange_type' = proplists:get_value(exchange_type, R, <<"topic">>),
-        'queue' = proplists:get_value(queue, R, <<"mc_queue_3">>),
-        'routing_key' = proplists:get_value(routing_key, R, <<"test_event">>)
-    }
-.
+%%-----------------------------------------------------------------------------
+%%
+%% @doc sends data received from amqp to websocket
+%% @since 2011-10-14 15:40
+%%
+do_rabbit_msg(#child{id_r=I1} = St, <<I2:?ID_LEN/binary, _/binary>>)
+  when I1 == I2 ->
+    St;
+do_rabbit_msg(St, Data) ->
+    send_to_ws(St, Data).
+
+%%%----------------------------------------------------------------------------
+%%% Internal functions
+%%%----------------------------------------------------------------------------
+%%
+%% @doc sends data to websocket
+%%
+send_to_ws(#child{sock=Sock} = St, Data) ->
+    mpln_p_debug:pr({?MODULE, send_to_ws, ?LINE, Data}, St#child.debug, ws, 6),
+    yaws_api:websocket_send(Sock, Data),
+    yaws_api:websocket_setopts(Sock, [{active, once}]),
+    St.
+
 %%-----------------------------------------------------------------------------

@@ -1,4 +1,4 @@
--module(mcom_conn_sup).
+-module(ecomet_conn_sup).
 -behaviour(supervisor).
 
 -export([start_link/0, init/1]).
@@ -8,6 +8,6 @@ init(_Args) ->
         []}}.
 
 start_link() ->
-    supervisor:start_link({local, mcom_conn_sup},
-        mcom_conn_sup,
+    supervisor:start_link({local, ecomet_conn_sup},
+        ecomet_conn_sup,
         []).
