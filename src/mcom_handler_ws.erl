@@ -46,21 +46,28 @@
 %%% API
 %%%----------------------------------------------------------------------------
 %%
-%% @doc sends received from websocket data to amqp
+%% @doc sends data received from websocket to amqp
+%% @since 2011-10-26 15:40
 %%
-send_msg_q(#child{conn=Conn, event=Rt_key} = St, Data) ->
+send_msg_q(#child{conn=Conn, event=Rt_key, id_r=Id} = St, Data) ->
+    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, St}, St#child.debug, run, 6),
     Payload = yaws_api:websocket_unframe_data(Data),
     L = binary_to_list(Payload),
     New = lists:reverse(L),
     New_r = list_to_binary(New),
-    mcom_rb:send_message(Conn#conn.channel, Conn#conn.exchange, Rt_key, New_r),
+    Res_data = <<Id/binary, New_r/binary>>,
+    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, Res_data}, St#child.debug, run, 6),
+    mcom_rb:send_message(Conn#conn.channel, Conn#conn.exchange, Rt_key, Res_data),
     St.
-    %send_to_amqp(St, New).
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc sends received from amqp data to websocket
+%% @doc sends data received from amqp to websocket
+%% @since 2011-10-14 15:40
 %%
+do_rabbit_msg(#child{id_r=I1} = St, <<I2:?ID_LEN/binary, _/binary>>)
+  when I1 == I2 ->
+    St;
 do_rabbit_msg(St, Data) ->
     send_to_ws(St, Data).
 

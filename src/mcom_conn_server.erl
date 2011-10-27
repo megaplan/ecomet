@@ -169,7 +169,8 @@ code_change(_Old_vsn, State, _Extra) ->
 -spec prepare_all(#child{}) -> #child{}.
 
 prepare_all(C) ->
-    prepare_rabbit(C).
+    Cid = prepare_id(C),
+    prepare_rabbit(Cid).
 
 %%-----------------------------------------------------------------------------
 -spec prepare_rabbit(#child{}) -> #child{}.
@@ -193,5 +194,16 @@ check_start_time(#child{start_time = T1} = State) ->
 %%-----------------------------------------------------------------------------
 do_smth(State) ->
     State.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates uniq id to be used in filtering own messages returned by
+%% rabbit which is lazy enough to not pay respect to no_local consumer flag
+%%
+prepare_id(St) ->
+    crypto:start(),
+    Data = crypto:rand_bytes(?ID_LEN),
+    <<Id:?ID_LEN/binary, _/binary>> = base64:encode(Data),
+    St#child{id_r = Id}.
 
 %%-----------------------------------------------------------------------------

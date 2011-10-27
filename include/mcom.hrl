@@ -1,6 +1,7 @@
 -ifndef(mcom_params).
 -define(mcom_params, true).
 
+-define(ID_LEN, 8).
 -define(SETUP_CONSUMER_TIMEOUT, 10000).
 -define(T, 1000).
 -define(TC, 0).
@@ -10,6 +11,7 @@
 % state of a websocket worker
 -record(child, {
     id,
+    id_r, % rand id for simulating no_local amqp consumer
     start_time = {0,0,0},
     sock,
     debug,

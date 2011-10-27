@@ -1,6 +1,32 @@
-%%%----------------------------------------------------------------------------
-%%% server to create children that serve new websocket requests
-%%%----------------------------------------------------------------------------
+%%%
+%%% mcom_server: server to create children to serve new websocket requests
+%%%
+%%% Copyright (c) 2011 Megaplan Ltd. (Russia)
+%%%
+%%% Permission is hereby granted, free of charge, to any person obtaining a copy
+%%% of this software and associated documentation files (the "Software"),
+%%% to deal in the Software without restriction, including without limitation
+%%% the rights to use, copy, modify, merge, publish, distribute, sublicense,
+%%% and/or sell copies of the Software, and to permit persons to whom
+%%% the Software is furnished to do so, subject to the following conditions:
+%%%
+%%% The above copyright notice and this permission notice shall be included
+%%% in all copies or substantial portions of the Software.
+%%%
+%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+%%% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+%%% MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+%%% IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+%%% CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+%%% TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+%%% SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+%%%
+%%% @author arkdro <arkdro@gmail.com>
+%%% @since 2011-10-14 15:40
+%%% @license MIT
+%%% @doc server to create children to serve new websocket requests. It connects
+%%% to rabbit and creates children with connection provided.
+%%%
 
 -module(mcom_server).
 -behaviour(gen_server).
@@ -78,10 +104,23 @@ stop() ->
     gen_server:call(?MODULE, stop).
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc creates a child with 'no local' mode (amqp messages from the child
+%% should not return to this child).
+%% @since 2011-10-26 14:14
+%%
+-spec add(binary()) -> ok.
+
 add(Event) ->
     add(Event, true).
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc creates a child with respect to 'no local' mode
+%% @since 2011-10-26 14:14
+%%
+-spec add(binary(), boolean()) -> ok.
+
 add(Event, true) ->
     gen_server:call(?MODULE, {add, Event, true});
 add(Event, _) ->
@@ -90,7 +129,9 @@ add(Event, _) ->
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
-
+%%
+%% @doc calls supervisor to create child
+%%
 -spec do_start_child(reference(), list()) ->
                             {ok, pid()} | {ok, pid(), any()} | {error, any()}.
 
@@ -101,6 +142,9 @@ do_start_child(Id, Pars) ->
     supervisor:start_child(mcom_conn_sup, Child).
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc creates child, stores its pid in state, checks for error
+%%
 -spec add_child(#csr{}, any(), boolean()) -> {{ok, pid()}, #csr{}}
                            | {{ok, pid(), any()}, #csr{}}
                            | {error, #csr{}}.
@@ -126,6 +170,9 @@ add_child(St, Event, No_local) ->
     end.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc gets config for yaws and starts embedded yaws server
+%%
 start_yaws(C) ->
     Y = C#csr.yaws_config,
     Docroot = proplists:get_value(docroot, Y, ""),
@@ -172,6 +219,11 @@ prepare_rabbit(C) ->
     C#csr{conn=Conn}.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc tries to reconnect to rabbit in case of do_start_child returns noproc,
+%% which means the connection to rabbit is closed.
+%% @todo decide which policy is better - connection restart or terminate itself
+%%
 check_error(St, {{noproc, _Reason}, _Other}) ->
     mpln_p_debug:pr({?MODULE, "check_error", ?LINE}, St#csr.debug, run, 2),
     New = reconnect(St),
@@ -182,6 +234,9 @@ check_error(St, _Other) ->
     {error, St}.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc does reconnect to rabbit
+%%
 reconnect(St) ->
     mcom_rb:teardown_conn(St#csr.conn),
     prepare_rabbit(St).
