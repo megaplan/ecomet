@@ -1,12 +1,12 @@
--ifndef(mcom_params).
--define(mcom_params, true).
+-ifndef(ecomet_params).
+-define(ecomet_params, true).
 
 -define(ID_LEN, 8).
 -define(SETUP_CONSUMER_TIMEOUT, 10000).
 -define(T, 1000).
 -define(TC, 0).
--define(LOG, "/var/log/erpher/mc").
--define(CONF, "mcom.conf").
+-define(LOG, "/var/log/erpher/ec").
+%-define(CONF, "ecomet.conf").
 
 % state of a websocket worker
 -record(child, {

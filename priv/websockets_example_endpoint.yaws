@@ -14,7 +14,7 @@ out(A) ->
 do_ws(Id) ->
     Event = 'ev1',
     No_local = false,
-    Res = mcom_server:add(Event, No_local),
+    Res = ecomet_server:add(Event, No_local),
     error_logger:info_report({?MODULE, "do_ws yaws", ?LINE, Id, Event, Res}),
     {ok, Pid} = Res,
     {websocket, Pid, once}.
