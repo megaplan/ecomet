@@ -99,12 +99,22 @@ terminate(_, _State) ->
 
 %%-----------------------------------------------------------------------------
 
+%% %% our own message from amqp
+%% handle_info({#'basic.deliver'{delivery_tag = Tag},
+%%              #amqp_msg{props = #'P_basic'{message_id =
+%%                            <<Id:?OWN_ID_LEN/binary, _/binary>>}}} = _Req,
+%%             #child{id_r = Id} = St) ->
+%%     mpln_p_debug:pr({?MODULE, "deliver our own message", ?LINE, _Req},
+%%                     St#child.debug, rb_msg, 6),
+%%     ecomet_rb:send_ack(St#child.conn, Tag),
+%%     New = do_smth(St),
+%%     {noreply, New, ?T};
+
 %% message from amqp
 handle_info({#'basic.deliver'{delivery_tag = Tag}, Content} = _Req, St) ->
     mpln_p_debug:pr({?MODULE, deliver, ?LINE, _Req}, St#child.debug, rb_msg, 6),
-    Payload = Content#amqp_msg.payload,
     ecomet_rb:send_ack(St#child.conn, Tag),
-    St_r = ecomet_handler_ws:do_rabbit_msg(St, Payload),
+    St_r = ecomet_handler_ws:do_rabbit_msg(St, Content),
     New = do_smth(St_r),
     {noreply, New, ?T};
 
@@ -201,9 +211,7 @@ do_smth(State) ->
 %% rabbit which is lazy enough to not pay respect to no_local consumer flag
 %%
 prepare_id(St) ->
-    crypto:start(),
-    Data = crypto:rand_bytes(?ID_LEN),
-    <<Id:?ID_LEN/binary, _/binary>> = base64:encode(Data),
+    Id = ecomet_data:gen_id(?OWN_ID_LEN),
     St#child{id_r = Id}.
 
 %%-----------------------------------------------------------------------------

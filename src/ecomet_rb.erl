@@ -41,13 +41,26 @@
 %%%----------------------------------------------------------------------------
 
 -export([start/1]).
--export([teardown/1, teardown_conn/1, send_message/4]).
+-export([teardown/1, teardown_conn/1, send_message/4, send_message/5]).
 -export([send_ack/2]).
 -export([prepare_queue/3]).
+-export([get_content_data/1]).
 
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
+%%
+%% @doc extract payload and id from amqp message
+%% @since 2011-10-27 17:50
+%%
+-spec get_content_data(#amqp_msg{}) -> {binary(), binary()}.
+
+get_content_data(Content) ->
+    Payload = Content#amqp_msg.payload,
+    Id = get_prop_id(Content#amqp_msg.props),
+    {Payload, Id}.
+
+%%-----------------------------------------------------------------------------
 %%
 %% @doc does all the AMQP client preparations, namely: connection, channel,
 %% queue, exchange, binding.
@@ -125,14 +138,27 @@ send_ack(Conn, Tag) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc publishes AMQP message with given payload to exchange
+%% @doc prepares AMQP message with given payload and calls publishing
 %% @since 2011-10-25 13:30
 %%
--spec send_message(any(), any(), any(), any()) -> ok.
+-spec send_message(any(), binary(), binary(), binary()) -> ok.
 
 send_message(Channel, X, RoutingKey, Payload) ->
-    Publish = #'basic.publish'{exchange = X, routing_key = RoutingKey},
-    amqp_channel:cast(Channel, Publish, #amqp_msg{payload = Payload}).
+    Msg = #amqp_msg{payload = Payload},
+    send_message2(Channel, X, RoutingKey, Msg).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc prepares AMQP message with given payload and id
+%% and calls publishing
+%% @since 2011-10-25 13:30
+%%
+-spec send_message(any(), binary(), binary(), binary(), binary()) -> ok.
+
+send_message(Channel, X, RoutingKey, Payload, Id) ->
+    Props = make_prop_id(Id),
+    Msg = #amqp_msg{payload = Payload, props = Props},
+    send_message2(Channel, X, RoutingKey, Msg).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -189,4 +215,30 @@ cancel_consumer(Channel, ConsumerTag) ->
     #'basic.cancel_ok'{consumer_tag = ConsumerTag} =
         amqp_channel:call(Channel,BasicCancel)
 .
+%%-----------------------------------------------------------------------------
+%%
+%% @doc publishes supplied message to amqp channel
+%%
+send_message2(Channel, X, RoutingKey, Msg) ->
+    Publish = #'basic.publish'{exchange = X, routing_key = RoutingKey},
+    amqp_channel:cast(Channel, Publish, Msg).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates amqp basic property with given id
+%%
+-spec make_prop_id(binary()) -> #'P_basic'{}.
+
+make_prop_id(Id) ->
+    #'P_basic'{correlation_id = Id}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc extracts id from amqp basic property
+%%
+-spec get_prop_id(#'P_basic'{}) -> binary().
+
+get_prop_id(Props) ->
+    Props#'P_basic'.correlation_id.
+
 %%-----------------------------------------------------------------------------

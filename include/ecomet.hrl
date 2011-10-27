@@ -1,7 +1,8 @@
 -ifndef(ecomet_params).
 -define(ecomet_params, true).
 
--define(ID_LEN, 8).
+-define(OWN_ID_LEN, 8).
+-define(MSG_ID_LEN, 8).
 -define(SETUP_CONSUMER_TIMEOUT, 10000).
 -define(T, 1000).
 -define(TC, 0).

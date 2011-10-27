@@ -49,15 +49,16 @@
 %% @doc sends data received from websocket to amqp
 %% @since 2011-10-26 15:40
 %%
-send_msg_q(#child{conn=Conn, event=Rt_key, id_r=Id} = St, Data) ->
-    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, St}, St#child.debug, run, 6),
-    Payload = yaws_api:websocket_unframe_data(Data),
-    L = binary_to_list(Payload),
-    New = lists:reverse(L),
-    New_r = list_to_binary(New),
-    Res_data = <<Id/binary, New_r/binary>>,
-    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, Res_data}, St#child.debug, run, 6),
-    ecomet_rb:send_message(Conn#conn.channel, Conn#conn.exchange, Rt_key, Res_data),
+send_msg_q(#child{sock=Sock, conn=Conn, event=Rt_key, id_r=Id} = St, Data) ->
+    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, Data, St},
+                    St#child.debug, run, 6),
+    New = yaws_api:websocket_unframe_data(Data),
+    yaws_api:websocket_setopts(Sock, [{active, once}]),
+    Rand = ecomet_data:gen_id(?MSG_ID_LEN),
+    Corr = <<Id/binary, Rand/binary>>,
+    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, New}, St#child.debug, run, 6),
+    ecomet_rb:send_message(Conn#conn.channel, Conn#conn.exchange,
+                           Rt_key, New, Corr),
     St.
 
 %%-----------------------------------------------------------------------------
@@ -65,11 +66,21 @@ send_msg_q(#child{conn=Conn, event=Rt_key, id_r=Id} = St, Data) ->
 %% @doc sends data received from amqp to websocket
 %% @since 2011-10-14 15:40
 %%
-do_rabbit_msg(#child{id_r=I1} = St, <<I2:?ID_LEN/binary, _/binary>>)
-  when I1 == I2 ->
-    St;
-do_rabbit_msg(St, Data) ->
-    send_to_ws(St, Data).
+-spec do_rabbit_msg(#child{}, any()) -> #child{}.
+
+do_rabbit_msg(#child{id_r=Base} = St, Content) ->
+    mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Content}, St#child.debug, rb_msg, 6),
+    {Payload, Id} = ecomet_rb:get_content_data(Content),
+    case is_our_id(Base, Id) of
+        true ->
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE},
+                            St#child.debug, rb_msg, 5),
+            St;
+        false ->
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE},
+                            St#child.debug, rb_msg, 5),
+            send_to_ws(St, Payload)
+    end.
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions
@@ -82,5 +93,14 @@ send_to_ws(#child{sock=Sock} = St, Data) ->
     yaws_api:websocket_send(Sock, Data),
     yaws_api:websocket_setopts(Sock, [{active, once}]),
     St.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @checks whether the received id is our own id
+%%
+-spec is_our_id(binary(), any()) -> boolean().
+
+is_our_id(Base, Id) ->
+    Base == Id.
 
 %%-----------------------------------------------------------------------------
