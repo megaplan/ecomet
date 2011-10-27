@@ -19,7 +19,7 @@ ERLC := $(R14_DIR)/erlc $(ERLC_OPTS)
 
 all: $(EBIN_DIR)
 	$(ERLC) -W $(INCLUDES) -o $(EBIN_DIR) $(SRC_DIR)/*.erl
-	cp $(SRC_DIR)/mcom_server.app $(EBIN_DIR)
+	cp $(SRC_DIR)/ecomet_server.app $(EBIN_DIR)
 	
 clean:
 	@rm -rvf $(EBIN_DIR)/*
