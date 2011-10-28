@@ -44,6 +44,7 @@
 %%%----------------------------------------------------------------------------
 
 -include("ecomet.hrl").
+-include("ecomet_stat.hrl").
 -include("rabbit_session.hrl").
 -include_lib("amqp_client.hrl").
 
@@ -171,11 +172,34 @@ code_change(_Old_vsn, State, _Extra) ->
 %%-----------------------------------------------------------------------------
 %% Internal functions
 %%-----------------------------------------------------------------------------
+%%
+%% @doc performs necessary preparations: own id, statistic, amqp
+%%
 -spec prepare_all(#child{}) -> #child{}.
 
 prepare_all(C) ->
     Cid = prepare_id(C),
-    prepare_rabbit(Cid).
+    Cst = prepare_stat(Cid),
+    prepare_rabbit(Cst).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc initializes statistic
+%%
+prepare_stat(C) ->
+    St = #stat{rabbit=
+                   {
+                 ecomet_stat:init(),
+                 ecomet_stat:init(),
+                 ecomet_stat:init()
+                },
+               wsock={
+                 ecomet_stat:init(),
+                 ecomet_stat:init(),
+                 ecomet_stat:init()
+                }
+              },
+    C#child{stat=St}.
 
 %%-----------------------------------------------------------------------------
 -spec prepare_rabbit(#child{}) -> #child{}.

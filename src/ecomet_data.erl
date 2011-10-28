@@ -34,6 +34,8 @@
 %%%----------------------------------------------------------------------------
 
 -export([gen_id/0, gen_id/1]).
+-export([make_minute_key/0, make_minute_key/1]).
+-export([make_hour_key/0, make_hour_key/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -61,5 +63,29 @@ gen_id(Len) ->
     Data = crypto:rand_bytes(Len),
     <<Id:Len/binary, _/binary>> = base64:encode(Data),
     Id.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates minute based key from datetime to use in statistic
+%%
+make_minute_key() ->
+    Now = now(),
+    T = calendar:now_to_local_time(Now),
+    make_minute_key(T).
+
+make_minute_key({D, {H, M, _S}}) ->
+    {D, {H, M, 0}}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates hour based key from datetime to use in statistic
+%%
+make_hour_key() ->
+    Now = now(),
+    T = calendar:now_to_local_time(Now),
+    make_hour_key(T).
+
+make_hour_key({D, {H, _M, _S}}) ->
+    {D, {H, 0, 0}}.
 
 %%-----------------------------------------------------------------------------

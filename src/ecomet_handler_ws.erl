@@ -76,12 +76,16 @@ do_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
         true when No_local == true ->
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id},
                             St#child.debug, rb_msg, 5),
-            St;
+            ecomet_stat:add_own_msg(St);
         _ ->
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE, Id},
                             St#child.debug, rb_msg, 5),
             Stdup = ecomet_test:dup_message_to_rabbit(St, Payload), % FIXME: for debug only
-            send_to_ws(Stdup, Payload)
+            St_st = ecomet_stat:add_other_msg(Stdup),
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, stat,
+                             ?LINE, Id, St_st},
+                            St#child.debug, stat, 6),
+            send_to_ws(St_st, Payload)
     end.
 
 %%%----------------------------------------------------------------------------

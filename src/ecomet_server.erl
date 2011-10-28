@@ -39,6 +39,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
 -export([add/1, add/2]).
+-export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -125,6 +126,26 @@ add(Event, true) ->
     gen_server:call(?MODULE, {add, Event, true});
 add(Event, _) ->
     gen_server:call(?MODULE, {add, Event, false}).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc updates statistic messages
+%% @since 2011-10-28 16:21
+%%
+-spec add_rabbit_inc_own_stat() -> ok.
+
+add_rabbit_inc_own_stat() ->
+    gen_server:cast(?MODULE, add_rabbit_inc_own_stat).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc updates statistic messages
+%% @since 2011-10-28 16:21
+%%
+-spec add_rabbit_inc_other_stat() -> ok.
+
+add_rabbit_inc_other_stat() ->
+    gen_server:cast(?MODULE, add_rabbit_inc_other_stat).
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions

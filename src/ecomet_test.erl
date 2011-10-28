@@ -30,11 +30,9 @@ dup_message_to_rabbit(#child{id=Id} = St, Data) ->
 %%
 %% @doc modified version of send_msg_q that doesn't do websocket unframe data
 %%
-dup_send_msg_q(#child{sock=Sock, conn=Conn, event=Rt_key, id=Id, id_r=Corr}=St,
-               Data) ->
+dup_send_msg_q(#child{conn=Conn, event=Rt_key, id=Id, id_r=Corr}=St, Data) ->
     mpln_p_debug:pr({?MODULE, dup_send_msg_q, ?LINE, Id, Data, St},
                     St#child.debug, run, 6),
-    %yaws_api:websocket_setopts(Sock, [{active, once}]),
     mpln_p_debug:pr({?MODULE, dup_send_msg_q, ?LINE, Data},
                     St#child.debug, run, 6),
     ecomet_rb:send_message(Conn#conn.channel, Conn#conn.exchange,

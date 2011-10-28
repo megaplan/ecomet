@@ -18,7 +18,8 @@
     debug,
     conn, % #conn{}
     no_local = false, % for amqp consumer setup
-    event
+    event,
+    stat % #stat{}
 }).
 
 -record(chi, {
