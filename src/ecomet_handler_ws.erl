@@ -67,16 +67,16 @@ send_msg_q(#child{sock=Sock, conn=Conn, event=Rt_key, id=Id, id_r=Corr} = St,
 %%
 -spec do_rabbit_msg(#child{}, any()) -> #child{}.
 
-do_rabbit_msg(#child{id=Id, id_r=Base} = St, Content) ->
+do_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
     mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Id, Content},
                     St#child.debug, rb_msg, 6),
     {Payload, Corr_msg} = ecomet_rb:get_content_data(Content),
     case is_our_id(Base, Corr_msg) of
-        true ->
+        true when No_local == true ->
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id},
                             St#child.debug, rb_msg, 5),
             St;
-        false ->
+        _ ->
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE, Id},
                             St#child.debug, rb_msg, 5),
             send_to_ws(St, Payload)
