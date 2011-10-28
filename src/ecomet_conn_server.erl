@@ -98,36 +98,28 @@ terminate(_, _State) ->
     ok.
 
 %%-----------------------------------------------------------------------------
-
-%% %% our own message from amqp
-%% handle_info({#'basic.deliver'{delivery_tag = Tag},
-%%              #amqp_msg{props = #'P_basic'{message_id =
-%%                            <<Id:?OWN_ID_LEN/binary, _/binary>>}}} = _Req,
-%%             #child{id_r = Id} = St) ->
-%%     mpln_p_debug:pr({?MODULE, "deliver our own message", ?LINE, _Req},
-%%                     St#child.debug, rb_msg, 6),
-%%     ecomet_rb:send_ack(St#child.conn, Tag),
-%%     New = do_smth(St),
-%%     {noreply, New, ?T};
-
-%% message from amqp
-handle_info({#'basic.deliver'{delivery_tag = Tag}, Content} = _Req, St) ->
-    mpln_p_debug:pr({?MODULE, deliver, ?LINE, _Req}, St#child.debug, rb_msg, 6),
+%% @doc message from amqp
+handle_info({#'basic.deliver'{delivery_tag = Tag}, Content} = _Req,
+            #child{id=Id} = St) ->
+    mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, _Req},
+                    St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),
     St_r = ecomet_handler_ws:do_rabbit_msg(St, Content),
     New = do_smth(St_r),
     {noreply, New, ?T};
 
-%% amqp setup consumer confirmation
+%% @doc amqp setup consumer confirmation
 handle_info(#'basic.consume_ok'{consumer_tag = Tag},
-            #child{conn=#conn{consumer_tag = Tag, consumer=undefined}} = St) ->
-    mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Tag}, St#child.debug, run, 2),
+            #child{id=Id,
+                   conn=#conn{consumer_tag = Tag, consumer=undefined}} = St) ->
+    mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Id, Tag},
+                    St#child.debug, run, 2),
     New = do_smth(St),
     check_start_time(New);
 
-%% wrong amqp setup consumer confirmation
-handle_info(timeout, #child{conn=#conn{consumer=undefined}} = St) ->
-    mpln_p_debug:pr({?MODULE, consume_extra, ?LINE}, St#child.debug, run, 0),
+%% @doc wrong amqp setup consumer confirmation
+handle_info(timeout, #child{id=Id, conn=#conn{consumer=undefined}} = St) ->
+    mpln_p_debug:pr({?MODULE, consume_extra, ?LINE, Id}, St#child.debug, run, 0),
     New = do_smth(St),
     check_start_time(New);
 
@@ -135,37 +127,40 @@ handle_info(timeout, St) ->
     New = do_smth(St),
     {noreply, New, ?T};
 
-%% init websocket ok
-handle_info({ok, Sock}, #child{sock=undefined} = State) ->
+%% @doc init websocket ok
+handle_info({ok, Sock}, #child{id=Id, sock=undefined} = State) ->
     Lname = inet:sockname(Sock),
     Rname = inet:peername(Sock),
     Opts = inet:getopts(Sock, [active, reuseaddr]),
-    mpln_p_debug:pr({?MODULE, socket_ok, ?LINE, Sock, Lname, Rname, Opts},
+    mpln_p_debug:pr({?MODULE, socket_ok, ?LINE, Id, Sock, Lname, Rname, Opts},
                    State#child.debug, run, 2),
     New = do_smth(State),
     {noreply, New#child{sock=Sock}, ?T};
 
-%% init websocket failed
-handle_info(_Other, #child{sock=undefined} = State) ->
-    mpln_p_debug:pr({?MODULE, socket_discard, ?LINE, _Other},
+%% @doc init websocket failed
+handle_info(_Other, #child{id=Id, sock=undefined} = State) ->
+    mpln_p_debug:pr({?MODULE, socket_discard, ?LINE, Id, _Other},
                     State#child.debug, run, 2),
     {stop, normal, State};
 
-%% data from websocket
-handle_info({tcp, Sock, Data} = Msg, #child{sock = Sock} = State) ->
-    mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Msg},
+%% @doc data from websocket
+handle_info({tcp, Sock, Data} = Msg, #child{id=Id, sock=Sock} = State) ->
+    mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Id, Msg},
                     State#child.debug, web_msg, 6),
     St_m= ecomet_handler_ws:send_msg_q(State, Data),
     New = do_smth(St_m),
     {noreply, New, ?T};
 
-%% websocket closed
-handle_info({tcp_closed, Sock} = Msg, #child{sock = Sock} = St) ->
-    mpln_p_debug:pr({?MODULE, tcp_closed, ?LINE, Msg}, St#child.debug, run, 2),
+%% @doc websocket closed
+handle_info({tcp_closed, Sock} = Msg, #child{id=Id, sock=Sock} = St) ->
+    mpln_p_debug:pr({?MODULE, tcp_closed, ?LINE, Id, Msg},
+                    St#child.debug, run, 2),
     {stop, normal, St};
 
-handle_info(_N, St) ->
-    mpln_p_debug:pr({?MODULE, info_other, ?LINE, _N}, St#child.debug, run, 2),
+%% @doc unknown info
+handle_info(_N, #child{id=Id} = St) ->
+    mpln_p_debug:pr({?MODULE, info_other, ?LINE, Id, _N},
+                    St#child.debug, run, 2),
     New = do_smth(St),
     {noreply, New, ?T}.
 

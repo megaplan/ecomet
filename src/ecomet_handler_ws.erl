@@ -49,13 +49,12 @@
 %% @doc sends data received from websocket to amqp
 %% @since 2011-10-26 15:40
 %%
-send_msg_q(#child{sock=Sock, conn=Conn, event=Rt_key, id_r=Id} = St, Data) ->
-    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, Data, St},
+send_msg_q(#child{sock=Sock, conn=Conn, event=Rt_key, id=Id, id_r=Corr} = St,
+           Data) ->
+    mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, Id, Data, St},
                     St#child.debug, run, 6),
     New = yaws_api:websocket_unframe_data(Data),
     yaws_api:websocket_setopts(Sock, [{active, once}]),
-    Rand = ecomet_data:gen_id(?MSG_ID_LEN),
-    Corr = <<Id/binary, Rand/binary>>,
     mpln_p_debug:pr({?MODULE, send_msg_q, ?LINE, New}, St#child.debug, run, 6),
     ecomet_rb:send_message(Conn#conn.channel, Conn#conn.exchange,
                            Rt_key, New, Corr),
@@ -68,16 +67,17 @@ send_msg_q(#child{sock=Sock, conn=Conn, event=Rt_key, id_r=Id} = St, Data) ->
 %%
 -spec do_rabbit_msg(#child{}, any()) -> #child{}.
 
-do_rabbit_msg(#child{id_r=Base} = St, Content) ->
-    mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Content}, St#child.debug, rb_msg, 6),
-    {Payload, Id} = ecomet_rb:get_content_data(Content),
-    case is_our_id(Base, Id) of
+do_rabbit_msg(#child{id=Id, id_r=Base} = St, Content) ->
+    mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Id, Content},
+                    St#child.debug, rb_msg, 6),
+    {Payload, Corr_msg} = ecomet_rb:get_content_data(Content),
+    case is_our_id(Base, Corr_msg) of
         true ->
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE},
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id},
                             St#child.debug, rb_msg, 5),
             St;
         false ->
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE},
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE, Id},
                             St#child.debug, rb_msg, 5),
             send_to_ws(St, Payload)
     end.
@@ -88,10 +88,11 @@ do_rabbit_msg(#child{id_r=Base} = St, Content) ->
 %%
 %% @doc sends data to websocket
 %%
-send_to_ws(#child{sock=Sock} = St, Data) ->
-    mpln_p_debug:pr({?MODULE, send_to_ws, ?LINE, Data}, St#child.debug, ws, 6),
+send_to_ws(#child{id=Id, sock=Sock} = St, Data) ->
+    mpln_p_debug:pr({?MODULE, send_to_ws, ?LINE, Id, Data},
+                    St#child.debug, ws, 6),
     yaws_api:websocket_send(Sock, Data),
-    yaws_api:websocket_setopts(Sock, [{active, once}]),
+    %yaws_api:websocket_setopts(Sock, [{active, once}]),
     St.
 
 %%-----------------------------------------------------------------------------
