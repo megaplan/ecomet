@@ -62,7 +62,8 @@ send_msg_q(#child{sock=Sock, conn=Conn, event=Rt_key, id=Id, id_r=Corr} = St,
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc sends data received from amqp to websocket
+%% @doc sends data received from amqp to websocket. any() in spec is needed
+%% to not include amtp hrl file.
 %% @since 2011-10-14 15:40
 %%
 -spec do_rabbit_msg(#child{}, any()) -> #child{}.
@@ -79,7 +80,8 @@ do_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
         _ ->
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE, Id},
                             St#child.debug, rb_msg, 5),
-            send_to_ws(St, Payload)
+            Stdup = ecomet_test:dup_message_to_rabbit(St, Payload), % FIXME: for debug only
+            send_to_ws(Stdup, Payload)
     end.
 
 %%%----------------------------------------------------------------------------
@@ -92,7 +94,6 @@ send_to_ws(#child{id=Id, sock=Sock} = St, Data) ->
     mpln_p_debug:pr({?MODULE, send_to_ws, ?LINE, Id, Data},
                     St#child.debug, ws, 6),
     yaws_api:websocket_send(Sock, Data),
-    %yaws_api:websocket_setopts(Sock, [{active, once}]),
     St.
 
 %%-----------------------------------------------------------------------------

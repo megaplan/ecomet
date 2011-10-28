@@ -11,10 +11,11 @@ INCLUDE_DIR += ../proper/include
 PROPER_BIN = ../proper/ebin
 PROPER_OPTS = -DPROPER
 
+DUP_TEST = -DDUP_TEST
 INCLUDES = $(INCLUDE_DIR:%=-I%)
 SRC_DIR = src
 EBIN_DIR := ebin
-ERLC_OPTS = +debug_info -DTEST $(PROPER_OPTS) -pa $(PROPER_BIN)
+ERLC_OPTS = +debug_info -DTEST $(DUP_TEST) $(PROPER_OPTS) -pa $(PROPER_BIN)
 ERLC := $(R14_DIR)/erlc $(ERLC_OPTS)
 
 all: $(EBIN_DIR)
