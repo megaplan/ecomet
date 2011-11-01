@@ -15,9 +15,12 @@
     id_r, % rand id for simulating no_local amqp consumer
     start_time = {0,0,0},
     sock,
+    lp_sock, % for long poll
+    yaws_pid, % for long poll
     debug,
     conn, % #conn{}
     no_local = false, % for amqp consumer setup
+    type :: 'ws' | 'lp', % web socket or long polling
     event,
     stat % #stat{}
 }).

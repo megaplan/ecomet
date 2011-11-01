@@ -38,7 +38,7 @@
 -export([start/0, start_link/0, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
--export([add/1, add/2]).
+-export([add_ws/1, add_ws/2, add_lp/2, add_lp/3]).
 -export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
 
 %%%----------------------------------------------------------------------------
@@ -59,9 +59,13 @@ init(_) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
-handle_call({add, Event, No_local}, _From, St) ->
-    mpln_p_debug:pr({?MODULE, 'add_child', ?LINE}, St#csr.debug, run, 2),
-    {Res, New} = add_child(St, Event, No_local),
+handle_call({add_lp, Sock, Event, No_local}, _From, St) ->
+    mpln_p_debug:pr({?MODULE, 'add_lp_child', ?LINE}, St#csr.debug, run, 2),
+    {Res, New} = add_lp_child(St, Sock, Event, No_local),
+    {reply, Res, New, ?T};
+handle_call({add_ws, Event, No_local}, _From, St) ->
+    mpln_p_debug:pr({?MODULE, 'add_ws_child', ?LINE}, St#csr.debug, run, 2),
+    {Res, New} = add_ws_child(St, Event, No_local),
     {reply, Res, New, ?T};
 handle_call(status, _From, St) ->
     {reply, St, St, ?T};
@@ -106,26 +110,49 @@ stop() ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates a child with 'no local' mode (amqp messages from the child
-%% should not return to this child).
+%% @doc creates a websocket child with 'no local' mode (amqp messages from
+%% the child should not return to this child).
 %% @since 2011-10-26 14:14
 %%
--spec add(binary()) -> ok.
+-spec add_ws(binary()) -> ok.
 
-add(Event) ->
-    add(Event, true).
+add_ws(Event) ->
+    add_ws(Event, true).
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates a child with respect to 'no local' mode
+%% @doc creates a websocket child with respect to 'no local' mode
 %% @since 2011-10-26 14:14
 %%
--spec add(binary(), boolean()) -> ok.
+-spec add_ws(binary(), boolean()) -> ok.
 
-add(Event, true) ->
-    gen_server:call(?MODULE, {add, Event, true});
-add(Event, _) ->
-    gen_server:call(?MODULE, {add, Event, false}).
+add_ws(Event, true) ->
+    gen_server:call(?MODULE, {add_ws, Event, true});
+add_ws(Event, _) ->
+    gen_server:call(?MODULE, {add_ws, Event, false}).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates a long-polling child with 'no local' mode
+%% (amqp messages from the child should not return to this child).
+%% @since 2011-10-26 14:14
+%%
+-spec add_lp(any(), binary()) -> ok.
+
+add_lp(Sock, Event) ->
+    add_lp(Sock, Event, true).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates a long-polling child with respect to 'no local' mode
+%% @since 2011-10-26 14:14
+%%
+-spec add_lp(any(), binary(), boolean()) -> ok.
+
+add_lp(Sock, Event, true) ->
+    gen_server:call(?MODULE, {add_lp, Sock, Event, true});
+add_lp(Sock, Event, _) ->
+    gen_server:call(?MODULE, {add_lp, Sock, Event, false}).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -163,16 +190,30 @@ do_start_child(Id, Pars) ->
     supervisor:start_child(ecomet_conn_sup, Child).
 
 %%-----------------------------------------------------------------------------
+add_lp_child(St, Sock, Event, No_local) ->
+    add_child(St, Sock, Event, No_local, 'lp').
+    
+%%-----------------------------------------------------------------------------
+add_ws_child(St, Event, No_local) ->
+    add_child(St, undefined, Event, No_local, 'ws').
+    
+%%-----------------------------------------------------------------------------
 %%
 %% @doc creates child, stores its pid in state, checks for error
 %%
--spec add_child(#csr{}, any(), boolean()) -> {{ok, pid()}, #csr{}}
+-spec add_child(#csr{}, any(), any(), boolean(), 'ws' | 'lp') ->
+                       {{ok, pid()}, #csr{}}
                            | {{ok, pid(), any()}, #csr{}}
                            | {error, #csr{}}.
 
-add_child(St, Event, No_local) ->
+add_child(St, Sock, Event, No_local, Type) ->
     Id = make_ref(),
-    Pars = [{id, Id}, {event, Event}, {no_local, No_local}, {conn, St#csr.conn}
+    Pars = [{id, Id},
+            {event, Event},
+            {no_local, No_local},
+            {conn, St#csr.conn},
+            {lp_sock, Sock},
+            {type, Type}
             | St#csr.child_config],
     Res = do_start_child(Id, Pars),
     mpln_p_debug:pr({?MODULE, "start child result", ?LINE, Id, Pars, Res},

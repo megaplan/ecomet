@@ -1,0 +1,12 @@
+<erl> % -*-Erlang-*-
+out(A) -> 
+    Sock = A#arg.clisock,
+    Event = 'ev2',
+    No_local = false,
+    Res = ecomet_server:add_lp(Sock, Event, No_local),
+    error_logger:info_report({?MODULE, "out lp endpoint", ?LINE, Event, Res}),
+    {ok, Pid} = Res,
+    MimeType = "text/html",
+    {streamcontent_from_pid, MimeType, Pid}.
+
+</erl>

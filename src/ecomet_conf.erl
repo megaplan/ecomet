@@ -68,6 +68,8 @@ get_config() ->
 %%
 get_child_config(List) ->
     #child{
+        lp_sock = proplists:get_value(lp_sock, List),
+        type = proplists:get_value(type, List, ws),
         no_local = proplists:get_value(no_local, List, false),
         conn = proplists:get_value(conn, List, #rses{}),
         debug = proplists:get_value(debug, List, []),

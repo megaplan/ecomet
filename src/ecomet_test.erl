@@ -10,6 +10,7 @@
 %%-----------------------------------------------------------------------------
 %%
 %% @doc modifies data and sends it to amqp. Somewhat of a poor's human simulator
+%% The code here is under ifdef. The DUP_TEST is defined in the makefile.
 %%
 -spec dup_message_to_rabbit(#child{}, binary()) -> #child{}.
 

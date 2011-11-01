@@ -1,5 +1,5 @@
 %%%
-%%% ecomet_data: misc data functions
+%%% ecomet_handler_lp: ecomet handler for long polling
 %%%
 %%% Copyright (c) 2011 Megaplan Ltd. (Russia)
 %%%
@@ -22,21 +22,18 @@
 %%% SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 %%%
 %%% @author arkdro <arkdro@gmail.com>
-%%% @since 2011-10-27 16:51
+%%% @since 2011-11-01 14:50
 %%% @license MIT
-%%% @doc misc data functions
+%%% @doc handler module that contains long polling functions
 %%%
 
--module(ecomet_data).
+-module(ecomet_handler_lp).
 
 %%%----------------------------------------------------------------------------
 %%% Exports
 %%%----------------------------------------------------------------------------
 
--export([gen_id/0, gen_id/1]).
--export([make_minute_key/0, make_minute_key/1]).
--export([make_hour_key/0, make_hour_key/1]).
--export([is_our_id/2]).
+-export([send_init_chunk/2, send_chunk/2, send_to_lp/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -48,54 +45,41 @@
 %%% API
 %%%----------------------------------------------------------------------------
 %%
-%% @doc creates random id and returns it as encoded binary base64 string
-%% of length N
-%% @since 2011-10-27 16:51
+%% @doc sends debug text to long polled socket. Unnecessary.
+%% @since 2011-11-01 17:57
+%% @todo remove it
 %%
--spec gen_id() -> binary().
+-spec send_init_chunk(#child{}, pid()) -> #child{}.
 
-gen_id() ->
-    gen_id(?OWN_ID_LEN).
-
--spec gen_id(non_neg_integer()) -> binary().
-
-gen_id(Len) ->
-    crypto:start(),
-    Data = crypto:rand_bytes(Len),
-    <<Id:Len/binary, _/binary>> = base64:encode(Data),
-    Id.
+send_init_chunk(St, Yaws_pid) ->
+    %Data = "chunk init lp done",
+    %send_chunk(St, Data),
+    St#child{yaws_pid = Yaws_pid}.
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates minute based key from datetime to use in statistic
+%% @doc sends data to long polled socket.
+%% @since 2011-11-01 17:57
 %%
-make_minute_key() ->
-    Now = now(),
-    T = calendar:now_to_local_time(Now),
-    make_minute_key(T).
+-spec send_chunk(#child{}, iolist()) -> ok.
 
-make_minute_key({D, {H, M, _S}}) ->
-    {D, {H, M, 0}}.
+send_chunk(#child{lp_sock=Sock, id=Id} = St, Data) ->
+    mpln_p_debug:pr({?MODULE, send_to_lp, ?LINE, Id, Data},
+                    St#child.debug, lp, 6),
+    yaws_api:stream_process_deliver_chunk(Sock, Data).
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates hour based key from datetime to use in statistic
+%% @doc sends data with 'pre' html tags around it to long polled socket
+%% @since 2011-11-01 17:57
 %%
-make_hour_key() ->
-    Now = now(),
-    T = calendar:now_to_local_time(Now),
-    make_hour_key(T).
+-spec send_to_lp(#child{}, iolist()) -> #child{}.
 
-make_hour_key({D, {H, _M, _S}}) ->
-    {D, {H, 0, 0}}.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @checks whether the received id is our own id
-%%
--spec is_our_id(binary(), any()) -> boolean().
-
-is_our_id(Base, Id) ->
-    Base == Id.
-
+send_to_lp(#child{id=Id} = St, Data) ->
+    mpln_p_debug:pr({?MODULE, send_to_lp, ?LINE, Id, Data},
+                    St#child.debug, lp, 6),
+    New = ["<pre>", Data, "</pre>\n"],
+    send_chunk(St, New),
+    St.
+    
 %%-----------------------------------------------------------------------------

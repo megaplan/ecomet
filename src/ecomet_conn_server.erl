@@ -105,7 +105,7 @@ handle_info({#'basic.deliver'{delivery_tag = Tag}, Content} = _Req,
     mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, _Req},
                     St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),
-    St_r = ecomet_handler_ws:do_rabbit_msg(St, Content),
+    St_r = send_rabbit_msg(St, Content),
     New = do_smth(St_r),
     {noreply, New, ?T};
 
@@ -129,7 +129,7 @@ handle_info(timeout, St) ->
     {noreply, New, ?T};
 
 %% @doc init websocket ok
-handle_info({ok, Sock}, #child{id=Id, sock=undefined} = State) ->
+handle_info({ok, Sock}, #child{id=Id, type=ws, sock=undefined} = State) ->
     Lname = inet:sockname(Sock),
     Rname = inet:peername(Sock),
     Opts = inet:getopts(Sock, [active, reuseaddr]),
@@ -139,23 +139,38 @@ handle_info({ok, Sock}, #child{id=Id, sock=undefined} = State) ->
     {noreply, New#child{sock=Sock}, ?T};
 
 %% @doc init websocket failed
-handle_info(_Other, #child{id=Id, sock=undefined} = State) ->
+handle_info(_Other, #child{id=Id, type=ws, sock=undefined} = State) ->
     mpln_p_debug:pr({?MODULE, socket_discard, ?LINE, Id, _Other},
                     State#child.debug, run, 2),
     {stop, normal, State};
 
 %% @doc data from websocket
-handle_info({tcp, Sock, Data} = Msg, #child{id=Id, sock=Sock} = State) ->
+handle_info({tcp, Sock, Data} = Msg, #child{id=Id, type=ws, sock=Sock} = St)
+  when Sock =/= undefined ->
     mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Id, Msg},
-                    State#child.debug, web_msg, 6),
-    St_m= ecomet_handler_ws:send_msg_q(State, Data),
+                    St#child.debug, web_msg, 6),
+    St_m= ecomet_handler_ws:send_msg_q(St, Data),
     New = do_smth(St_m),
     {noreply, New, ?T};
 
 %% @doc websocket closed
-handle_info({tcp_closed, Sock} = Msg, #child{id=Id, sock=Sock} = St) ->
+handle_info({tcp_closed, Sock} = Msg, #child{id=Id, type=ws, sock=Sock} = St) ->
     mpln_p_debug:pr({?MODULE, tcp_closed, ?LINE, Id, Msg},
                     St#child.debug, run, 2),
+    {stop, normal, St};
+
+%% @doc long-poll init ok
+handle_info({ok, Yaws_pid}, #child{id=Id, type=lp} = St) ->
+    mpln_p_debug:pr({?MODULE, lp_init_ok, ?LINE, Id, Yaws_pid},
+                    St#child.debug, run, 2),
+    New = ecomet_handler_lp:send_init_chunk(St, Yaws_pid),
+    {noreply, New, ?T};
+
+%% @doc long-poll init failed
+handle_info({discard, Yaws_pid}, #child{id=Id, type=lp, lp_sock=Sock} = St) ->
+    mpln_p_debug:pr({?MODULE, lp_init_failed, ?LINE, Id, Yaws_pid},
+                    St#child.debug, run, 2),
+    yaws_api:stream_process_end(Sock, Yaws_pid),
     {stop, normal, St};
 
 %% @doc unknown info
@@ -232,5 +247,39 @@ do_smth(State) ->
 prepare_id(St) ->
     Id = ecomet_data:gen_id(?OWN_ID_LEN),
     St#child{id_r = Id}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc compares own id against the message's id, sends data received
+%% from amqp to web client. Duplicates the message back to amqp.
+%% @since 2011-10-14 15:40
+%%
+-spec send_rabbit_msg(#child{}, any()) -> #child{}.
+
+send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
+    mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Id, Content},
+                    St#child.debug, rb_msg, 6),
+    {Payload, Corr_msg} = ecomet_rb:get_content_data(Content),
+    case ecomet_data:is_our_id(Base, Corr_msg) of
+        true when No_local == true ->
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id},
+                            St#child.debug, rb_msg, 5),
+            ecomet_stat:add_own_msg(St);
+        _ ->
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE, Id},
+                            St#child.debug, rb_msg, 5),
+            Stdup = ecomet_test:dup_message_to_rabbit(St, Payload), % FIXME: for debug only
+            St_st = ecomet_stat:add_other_msg(Stdup),
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, stat,
+                             ?LINE, Id, St_st},
+                            St#child.debug, stat, 6),
+            proceed_send(St_st, Payload)
+    end.
+
+%%-----------------------------------------------------------------------------
+proceed_send(#child{type=ws} = St, Content) ->
+    ecomet_handler_ws:send_to_ws(St, Content);
+proceed_send(#child{type=lp} = St, Content) ->
+    ecomet_handler_lp:send_to_lp(St, Content).
 
 %%-----------------------------------------------------------------------------

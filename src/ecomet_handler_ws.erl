@@ -33,7 +33,7 @@
 %%% Exports
 %%%----------------------------------------------------------------------------
 
--export([send_msg_q/2, do_rabbit_msg/2]).
+-export([send_msg_q/2, send_to_ws/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -62,36 +62,6 @@ send_msg_q(#child{sock=Sock, conn=Conn, event=Rt_key, id=Id, id_r=Corr} = St,
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc sends data received from amqp to websocket. any() in spec is needed
-%% to not include amtp hrl file.
-%% @since 2011-10-14 15:40
-%%
--spec do_rabbit_msg(#child{}, any()) -> #child{}.
-
-do_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
-    mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Id, Content},
-                    St#child.debug, rb_msg, 6),
-    {Payload, Corr_msg} = ecomet_rb:get_content_data(Content),
-    case is_our_id(Base, Corr_msg) of
-        true when No_local == true ->
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id},
-                            St#child.debug, rb_msg, 5),
-            ecomet_stat:add_own_msg(St);
-        _ ->
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE, Id},
-                            St#child.debug, rb_msg, 5),
-            Stdup = ecomet_test:dup_message_to_rabbit(St, Payload), % FIXME: for debug only
-            St_st = ecomet_stat:add_other_msg(Stdup),
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, stat,
-                             ?LINE, Id, St_st},
-                            St#child.debug, stat, 6),
-            send_to_ws(St_st, Payload)
-    end.
-
-%%%----------------------------------------------------------------------------
-%%% Internal functions
-%%%----------------------------------------------------------------------------
-%%
 %% @doc sends data to websocket
 %%
 send_to_ws(#child{id=Id, sock=Sock} = St, Data) ->
@@ -99,14 +69,5 @@ send_to_ws(#child{id=Id, sock=Sock} = St, Data) ->
                     St#child.debug, ws, 6),
     yaws_api:websocket_send(Sock, Data),
     St.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @checks whether the received id is our own id
-%%
--spec is_our_id(binary(), any()) -> boolean().
-
-is_our_id(Base, Id) ->
-    Base == Id.
 
 %%-----------------------------------------------------------------------------

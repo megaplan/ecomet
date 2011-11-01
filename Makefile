@@ -11,7 +11,7 @@ INCLUDE_DIR += ../proper/include
 PROPER_BIN = ../proper/ebin
 PROPER_OPTS = -DPROPER
 
-DUP_TEST = -DDUP_TEST
+#DUP_TEST = -DDUP_TEST
 
 INCLUDES = $(INCLUDE_DIR:%=-I%)
 SRC_DIR = src
