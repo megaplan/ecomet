@@ -1,10 +1,25 @@
 <erl> % -*-Erlang-*-
 out(A) -> 
+    Q = A#arg.querydata,
+    error_logger:info_report({?MODULE, "lp endpoint q", ?LINE, Q}),
+    P = yaws_api:parse_query(A),
+    error_logger:info_report({?MODULE, "lp endpoint p", ?LINE, P}),
+    case lists:keysearch("rand_id", 1, P) of
+        {value, {"rand_id", Id}} ->
+            error_logger:info_report({?MODULE, "lp endpoint id", ?LINE, Id}),
+            Idn = list_to_integer(Id),
+            proceed(A, Idn);
+        _ ->
+            error_logger:info_report({?MODULE, "lp endpoint no id", ?LINE}),
+            {html, "no id found"}
+    end.
+
+proceed(A, Id) ->
     Sock = A#arg.clisock,
     Event = 'ev2',
     No_local = false,
-    Res = ecomet_server:add_lp(Sock, Event, No_local),
-    error_logger:info_report({?MODULE, "out lp endpoint", ?LINE, Event, Res}),
+    Res = ecomet_server:add_lp(Sock, Event, No_local, Id),
+    error_logger:info_report({?MODULE, "lp endpoint res", ?LINE, Event, Res}),
     {ok, Pid} = Res,
     MimeType = "text/html",
     {streamcontent_from_pid, MimeType, Pid}.

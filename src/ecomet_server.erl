@@ -38,7 +38,7 @@
 -export([start/0, start_link/0, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
--export([add_ws/1, add_ws/2, add_lp/2, add_lp/3]).
+-export([add_ws/1, add_ws/2, add_lp/3, add_lp/4]).
 -export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
 
 %%%----------------------------------------------------------------------------
@@ -59,9 +59,9 @@ init(_) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
-handle_call({add_lp, Sock, Event, No_local}, _From, St) ->
-    mpln_p_debug:pr({?MODULE, 'add_lp_child', ?LINE}, St#csr.debug, run, 2),
-    {Res, New} = add_lp_child(St, Sock, Event, No_local),
+handle_call({add_lp, Sock, Event, No_local, Id}, _From, St) ->
+    mpln_p_debug:pr({?MODULE, 'add_lp_child', ?LINE, Id}, St#csr.debug, run, 2),
+    {Res, New} = check_lp_child(St, Sock, Event, No_local, Id),
     {reply, Res, New, ?T};
 handle_call({add_ws, Event, No_local}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_ws_child', ?LINE}, St#csr.debug, run, 2),
@@ -137,22 +137,22 @@ add_ws(Event, _) ->
 %% (amqp messages from the child should not return to this child).
 %% @since 2011-10-26 14:14
 %%
--spec add_lp(any(), binary()) -> ok.
+-spec add_lp(any(), binary(), non_neg_integer()) -> ok.
 
-add_lp(Sock, Event) ->
-    add_lp(Sock, Event, true).
+add_lp(Sock, Event, Id) ->
+    add_lp(Sock, Event, true, Id).
 
 %%-----------------------------------------------------------------------------
 %%
 %% @doc creates a long-polling child with respect to 'no local' mode
 %% @since 2011-10-26 14:14
 %%
--spec add_lp(any(), binary(), boolean()) -> ok.
+-spec add_lp(any(), binary(), boolean(), non_neg_integer()) -> ok.
 
-add_lp(Sock, Event, true) ->
-    gen_server:call(?MODULE, {add_lp, Sock, Event, true});
-add_lp(Sock, Event, _) ->
-    gen_server:call(?MODULE, {add_lp, Sock, Event, false}).
+add_lp(Sock, Event, true, Id) ->
+    gen_server:call(?MODULE, {add_lp, Sock, Event, true, Id});
+add_lp(Sock, Event, _, Id) ->
+    gen_server:call(?MODULE, {add_lp, Sock, Event, false, Id}).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -190,25 +190,27 @@ do_start_child(Id, Pars) ->
     supervisor:start_child(ecomet_conn_sup, Child).
 
 %%-----------------------------------------------------------------------------
-add_lp_child(St, Sock, Event, No_local) ->
-    add_child(St, Sock, Event, No_local, 'lp').
+add_lp_child(St, Sock, Event, No_local, Id) ->
+    add_child(St, Sock, Event, No_local, 'lp', Id).
     
 %%-----------------------------------------------------------------------------
 add_ws_child(St, Event, No_local) ->
-    add_child(St, undefined, Event, No_local, 'ws').
+    add_child(St, undefined, Event, No_local, 'ws', undefined).
     
 %%-----------------------------------------------------------------------------
 %%
 %% @doc creates child, stores its pid in state, checks for error
 %%
--spec add_child(#csr{}, any(), any(), boolean(), 'ws' | 'lp') ->
+-spec add_child(#csr{}, any(), any(), boolean(), 'ws' | 'lp',
+                undefined | non_neg_integer()) ->
                        {{ok, pid()}, #csr{}}
                            | {{ok, pid(), any()}, #csr{}}
                            | {error, #csr{}}.
 
-add_child(St, Sock, Event, No_local, Type) ->
+add_child(St, Sock, Event, No_local, Type, Id_web) ->
     Id = make_ref(),
     Pars = [{id, Id},
+            {id_web, Id_web},
             {event, Event},
             {no_local, No_local},
             {conn, St#csr.conn},
@@ -220,11 +222,11 @@ add_child(St, Sock, Event, No_local, Type) ->
                     St#csr.debug, child, 4),
     case Res of
         {ok, Pid} ->
-            Ch = [{Pid, Id} | St#csr.children],
-            {Res, St#csr{children = Ch}};
+            Ch = [ #chi{pid=Pid, id=Id} | St#csr.ws_children],
+            {Res, St#csr{ws_children = Ch}};
         {ok, Pid, _Info} ->
-            Ch = [{Pid, Id} | St#csr.children],
-            {Res, St#csr{children = Ch}};
+            Ch = [ #chi{pid=Pid, id=Id} | St#csr.ws_children],
+            {Res, St#csr{ws_children = Ch}};
         {error, Reason} ->
             mpln_p_debug:pr({?MODULE, "start child error", ?LINE, Reason},
                             St#csr.debug, child, 1),
@@ -302,5 +304,44 @@ check_error(St, _Other) ->
 reconnect(St) ->
     ecomet_rb:teardown_conn(St#csr.conn),
     prepare_rabbit(St).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc checks whether the child with given id is alive. If yes, then
+%% charges it to do some work, otherwise creates the one
+%%
+-spec check_lp_child(#csr{}, any(), binary(), boolean(), non_neg_integer()) ->
+                            {{ok, pid()}, #csr{}}
+                                | {{ok, pid(), any()}, #csr{}}
+                                | {error, #csr{}}.
+
+check_lp_child(#csr{lp_children = Ch} = St, Sock, Event, No_local, Id) ->
+    case is_child_alive(Ch, Id) of
+        {true, I} ->
+            charge_child(St, I#chi.pid);
+        {false, _} ->
+            add_lp_child(St, Sock, Event, No_local, Id)
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc finds child with given id and checks whether it's alive
+%%
+is_child_alive(List, Id) ->
+    L2 = [X || X <- List, X#chi.id_web == Id],
+    case L2 of
+        [I | _] ->
+            {is_process_alive(I#chi.pid), I};
+        _ ->
+            {false, undefined}
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc child would just wait for incoming messages from amqp. All we need
+%% here is to return its pid.
+%%
+charge_child(St, Pid) ->
+    {ok, Pid, St}.
 
 %%-----------------------------------------------------------------------------

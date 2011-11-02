@@ -63,17 +63,20 @@ send_init_chunk(St, Yaws_pid) ->
 %%
 -spec send_chunk(#child{}, iolist()) -> ok.
 
-send_chunk(#child{lp_sock=Sock, id=Id} = St, Data) ->
+send_chunk(#child{lp_sock=Sock, id=Id, yaws_pid=Yaws_pid} = St, Data) ->
     mpln_p_debug:pr({?MODULE, send_to_lp, ?LINE, Id, Data},
                     St#child.debug, lp, 6),
-    yaws_api:stream_process_deliver_chunk(Sock, Data).
+    yaws_api:stream_process_deliver(Sock, Data),
+    %timer:sleep(300),
+    yaws_api:stream_process_end(Sock, Yaws_pid).
+    
 
 %%-----------------------------------------------------------------------------
 %%
 %% @doc sends data with 'pre' html tags around it to long polled socket
 %% @since 2011-11-01 17:57
 %%
--spec send_to_lp(#child{}, iolist()) -> #child{}.
+-spec send_to_lp(#child{}, binary() | iolist()) -> #child{}.
 
 send_to_lp(#child{id=Id} = St, Data) ->
     mpln_p_debug:pr({?MODULE, send_to_lp, ?LINE, Id, Data},

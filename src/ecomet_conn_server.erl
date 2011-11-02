@@ -72,6 +72,7 @@ stop(Pid) ->
 init([List]) ->
     C = ecomet_conf:get_child_config(List),
     New = prepare_all(C),
+    mpln_p_debug:pr({?MODULE, init, ?LINE, New}, C#child.debug, run, 6),
     mpln_p_debug:pr({?MODULE, init_done, ?LINE}, C#child.debug, run, 2),
     {ok, New, ?T}.
 
@@ -168,7 +169,7 @@ handle_info({ok, Yaws_pid}, #child{id=Id, type=lp} = St) ->
 
 %% @doc long-poll init failed
 handle_info({discard, Yaws_pid}, #child{id=Id, type=lp, lp_sock=Sock} = St) ->
-    mpln_p_debug:pr({?MODULE, lp_init_failed, ?LINE, Id, Yaws_pid},
+    mpln_p_debug:pr({?MODULE, lp_discard, ?LINE, Id, Yaws_pid},
                     St#child.debug, run, 2),
     yaws_api:stream_process_end(Sock, Yaws_pid),
     {stop, normal, St};

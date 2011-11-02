@@ -13,6 +13,7 @@
 -record(child, {
     id,
     id_r, % rand id for simulating no_local amqp consumer
+    id_web, % rand id from long poll web page
     start_time = {0,0,0},
     sock,
     lp_sock, % for long poll
@@ -28,14 +29,14 @@
 -record(chi, {
     pid,
     id,
-    mon,
-    os_pid,
+    id_web,
     start={0,0,0} % time in now() format
 }).
 
 % state of a server server
 -record(csr, {
-    children = [],
+    ws_children = [], % web socket
+    lp_children = [], % long poll
     child_config = [],
     yaws_config = [],
     log,

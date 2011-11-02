@@ -8,6 +8,7 @@ out(A) ->
     Addr = filename:dirname(Path) ++ "lp_endpoint.yaws",
     %WebSocketLocation = Host ++ EndpointPath,
     %Body = html_body(WebSocketLocation),
+    error_logger:info_report({?MODULE, "out lp addr", ?LINE, Addr}),
     Body = html_body(Addr),
     {content, "text/html", Body}.
 
@@ -38,14 +39,14 @@ html_body(Addr) ->
          );
      }
 
-     function waitForMsg(){
+     function waitForMsg(rand_id){
          /* This requests the url \"lp_endpoint.yaws\"
          When it complete (or errors)*/
          $.ajax({
              type: \"GET\",
              url: \"",
              Addr,
-             "\",
+             "\" + '?rand_id=' + rand_id,
 
              async: true, /* If set to non-async, browser shows page as \"Loading..\"*/
              cache: false,
@@ -54,21 +55,22 @@ html_body(Addr) ->
              success: function(data){ /* called when request to lp_endpoint.yaws completes */
                  addmsg(\"new\", data); /* Add response to a .msg div (with the \"new\" class)*/
                  setTimeout(
-                     'waitForMsg()', /* Request next message */
+                     'waitForMsg(rand_id)', /* Request next message */
                      1000 /* ..after 1 seconds */
                  );
              },
              error: function(XMLHttpRequest, textStatus, errorThrown){
                  addmsg(\"error\", textStatus + \" (\" + errorThrown + \")\");
                  setTimeout(
-                     'waitForMsg()', /* Try again after.. */
+                     'waitForMsg(rand_id)', /* Try again after.. */
                      2000); /* milliseconds (15seconds) */
              },
          });
      };
 
      $(document).ready(function(){
-         waitForMsg(); /* Start the inital request */
+        rand_id = Math.floor(Math.random()*10000);
+         waitForMsg(rand_id); /* Start the inital request */
      });
      </script>
  </head>

@@ -68,6 +68,7 @@ get_config() ->
 %%
 get_child_config(List) ->
     #child{
+        id_web = proplists:get_value(id_web, List),
         lp_sock = proplists:get_value(lp_sock, List),
         type = proplists:get_value(type, List, ws),
         no_local = proplists:get_value(no_local, List, false),
