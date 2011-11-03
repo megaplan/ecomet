@@ -222,11 +222,11 @@ add_child(St, Sock, Event, No_local, Type, Id_web) ->
                     St#csr.debug, child, 4),
     case Res of
         {ok, Pid} ->
-            Ch = [ #chi{pid=Pid, id=Id} | St#csr.ws_children],
-            {Res, St#csr{ws_children = Ch}};
+            New_st = add_child_list(St, Type, Pid, Id, Id_web),
+            {Res, New_st};
         {ok, Pid, _Info} ->
-            Ch = [ #chi{pid=Pid, id=Id} | St#csr.ws_children],
-            {Res, St#csr{ws_children = Ch}};
+            New_st = add_child_list(St, Type, Pid, Id, Id_web),
+            {Res, New_st};
         {error, Reason} ->
             mpln_p_debug:pr({?MODULE, "start child error", ?LINE, Reason},
                             St#csr.debug, child, 1),
@@ -316,7 +316,7 @@ reconnect(St) ->
                                 | {error, #csr{}}.
 
 check_lp_child(#csr{lp_children = Ch} = St, Sock, Event, No_local, Id) ->
-    case is_child_alive(Ch, Id) of
+    case is_child_alive(St, Ch, Id) of
         {true, I} ->
             charge_child(St, I#chi.pid);
         {false, _} ->
@@ -327,8 +327,12 @@ check_lp_child(#csr{lp_children = Ch} = St, Sock, Event, No_local, Id) ->
 %%
 %% @doc finds child with given id and checks whether it's alive
 %%
-is_child_alive(List, Id) ->
+is_child_alive(St, List, Id) ->
+    mpln_p_debug:pr({?MODULE, "is_child_alive", ?LINE, List, Id},
+                    St#csr.debug, run, 4),
     L2 = [X || X <- List, X#chi.id_web == Id],
+    mpln_p_debug:pr({?MODULE, "is_child_alive", ?LINE, L2, Id},
+                    St#csr.debug, run, 4),
     case L2 of
         [I | _] ->
             {is_process_alive(I#chi.pid), I};
@@ -342,6 +346,16 @@ is_child_alive(List, Id) ->
 %% here is to return its pid.
 %%
 charge_child(St, Pid) ->
-    {ok, Pid, St}.
+    mpln_p_debug:pr({?MODULE, "charge child", ?LINE, Pid},
+                    St#csr.debug, child, 4),
+    {{ok, Pid}, St}.
+
+%%-----------------------------------------------------------------------------
+add_child_list(St, 'ws', Pid, Id, Id_web) ->
+    Ch = [ #chi{pid=Pid, id=Id, id_web=Id_web} | St#csr.ws_children],
+    St#csr{ws_children=Ch};
+add_child_list(St, 'lp', Pid, Id, Id_web) ->
+    Ch = [ #chi{pid=Pid, id=Id, id_web=Id_web} | St#csr.lp_children],
+    St#csr{lp_children=Ch}.
 
 %%-----------------------------------------------------------------------------

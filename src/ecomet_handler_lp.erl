@@ -67,9 +67,9 @@ send_chunk(#child{lp_sock=Sock, id=Id, yaws_pid=Yaws_pid} = St, Data) ->
     mpln_p_debug:pr({?MODULE, send_to_lp, ?LINE, Id, Data},
                     St#child.debug, lp, 6),
     yaws_api:stream_process_deliver(Sock, Data),
-    %timer:sleep(300),
+    %timer:sleep(300), % some delay necessary, otherwise no data comes sometimes
     yaws_api:stream_process_end(Sock, Yaws_pid).
-    
+
 
 %%-----------------------------------------------------------------------------
 %%
