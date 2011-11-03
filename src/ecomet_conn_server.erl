@@ -38,6 +38,7 @@
 -export([start/0, start_link/0, start_link/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
+-export([get_lp_data/2, get_lp_data/3]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -51,6 +52,13 @@
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
+get_lp_data(Pid, From) ->
+    get_lp_data(Pid, From, infinity).
+
+get_lp_data(Pid, From, Timeout) ->
+    gen_server:call(Pid, {get_lp_data, From}, Timeout).
+
+%%-----------------------------------------------------------------------------
 start() ->
     start_link().
 
@@ -77,6 +85,10 @@ init([List]) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
+handle_call({get_lp_data, Client}, _From, #child{clients=C} = St) ->
+    St_r = make_lp_result(St#child{clients=[Client|C]}),
+    New = do_smth(St_r),
+    {reply, ok, New, ?T};
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 handle_call(status, _From, St) ->
@@ -135,7 +147,7 @@ handle_info({ok, Sock}, #child{id=Id, type=ws, sock=undefined} = State) ->
     Rname = inet:peername(Sock),
     Opts = inet:getopts(Sock, [active, reuseaddr]),
     mpln_p_debug:pr({?MODULE, socket_ok, ?LINE, Id, Sock, Lname, Rname, Opts},
-                   State#child.debug, run, 2),
+                    State#child.debug, run, 2),
     New = do_smth(State),
     {noreply, New#child{sock=Sock}, ?T};
 
@@ -164,7 +176,7 @@ handle_info({tcp_closed, Sock} = Msg, #child{id=Id, type=ws, sock=Sock} = St) ->
 handle_info({ok, Yaws_pid}, #child{id=Id, type=lp} = St) ->
     mpln_p_debug:pr({?MODULE, lp_init_ok, ?LINE, Id, Yaws_pid},
                     St#child.debug, run, 2),
-    New = ecomet_handler_lp:send_init_chunk(St, Yaws_pid),
+    New = St#child{yaws_pid = Yaws_pid},
     {noreply, New, ?T};
 
 %% @doc long-poll init failed
@@ -194,9 +206,17 @@ code_change(_Old_vsn, State, _Extra) ->
 -spec prepare_all(#child{}) -> #child{}.
 
 prepare_all(C) ->
-    Cid = prepare_id(C),
+    Cq = prepare_queue(C),
+    Cid = prepare_id(Cq),
     Cst = prepare_stat(Cid),
     prepare_rabbit(Cst).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc initializes queue for received (amqp) messages
+%%
+prepare_queue(C) ->
+    C#child{queue = queue:new()}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -237,8 +257,13 @@ check_start_time(#child{start_time = T1} = State) ->
     end.
 
 %%-----------------------------------------------------------------------------
-do_smth(State) ->
-    State.
+do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max} = State) ->
+    Qnew = clean_queue(Q, Dur, Max),
+    St_q = State#child{queue=Qnew},
+    St_sent = send_queued_msg(St_q),
+    mpln_p_debug:pr({?MODULE, do_smth, ?LINE, Id, St_sent},
+                    St_sent#child.debug, run, 7),
+    St_sent.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -273,7 +298,7 @@ send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
             St_st = ecomet_stat:add_other_msg(Stdup),
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, stat,
                              ?LINE, Id, St_st},
-                            St#child.debug, stat, 6),
+                            St_st#child.debug, stat, 6),
             proceed_send(St_st, Payload)
     end.
 
@@ -281,6 +306,101 @@ send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
 proceed_send(#child{type=ws} = St, Content) ->
     ecomet_handler_ws:send_to_ws(St, Content);
 proceed_send(#child{type=lp} = St, Content) ->
-    ecomet_handler_lp:send_to_lp(St, Content).
+    %ecomet_handler_lp:send_to_lp(St, Content).
+    St_p = store_msg(St, Content),
+    St_p.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc stores message in the state's queue for later transmission
+%%
+-spec store_msg(#child{}, binary()) -> #child{}.
+
+store_msg(#child{queue = Q} = St, Data) ->
+    Item = {now(), Data},
+    Qnew = queue:in(Item, Q),
+    St#child{queue=Qnew}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc removes too old or surplus messages from the queue
+%%
+-spec clean_queue(queue(), non_neg_integer(), non_neg_integer()) -> queue().
+
+clean_queue(Q, Dur, Max) ->
+    Qlen = clean_queue_by_len(Q, Max),
+    clean_queue_by_time(Qlen, Dur).
+
+%%-----------------------------------------------------------------------------
+clean_queue_by_time(Q, Dur) ->
+    Now = now(),
+    F = fun({Time, _Data}) ->
+                timer:now_diff(Now, Time) < Dur
+        end,
+    queue:filter(F, Q).
+
+%%-----------------------------------------------------------------------------
+clean_queue_by_len(Q, Max) ->
+    Len = queue:len(Q),
+    if Len > Max ->
+            F = fun(_, Qacc) ->
+                        {_, Qres} = queue:out(Qacc),
+                        Qres
+                end,
+            Delta = Len - Max,
+            lists:foldl(F, Q, lists:duplicate(Delta, true));
+       true ->
+            Q
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates a response if there is an information available and sends
+%% it to the original client (which called ecomet_server).
+%%
+-spec make_lp_result(#child{}) -> #child{}.
+
+make_lp_result(#child{queue=Q} = St) ->
+    case queue:out(Q) of
+        {{value, Item}, Q2} ->
+            make_lp_msg(St#child{queue=Q2}, Item);
+        _ ->
+            St
+    end.
+
+%%-----------------------------------------------------------------------------
+make_lp_msg(#child{id=Id, clients=[C|T]} = St, Item) ->
+    Resp = make_response(Item),
+    mpln_p_debug:pr({?MODULE, make_lp_msg,
+                     ?LINE, Id, Item, Resp},
+                    St#child.debug, lp, 6),
+    gen_server:reply(C, Resp),
+    St#child{clients=T}.
+
+%%-----------------------------------------------------------------------------
+send_one_response(Client, Item) ->
+    Resp = make_response(Item),
+    gen_server:reply(Client, Resp).
+
+%%-----------------------------------------------------------------------------
+make_response({_Time, Data}) ->
+    Body = <<
+             "<pre>",
+             Data/binary,
+             "</pre>"
+           >>,
+    {ok, Body}.
+
+%%-----------------------------------------------------------------------------
+send_queued_msg(#child{queue=Q, clients=[C|T]} = St) ->
+    case queue:out(Q) of
+        {{value, Item}, Q2} ->
+            send_one_response(C, Item),
+            send_queued_msg(St#child{queue=Q2, clients=T});
+        _ ->
+            St
+    end;
+send_queued_msg(#child{clients=[]} = St) ->
+    St.
 
 %%-----------------------------------------------------------------------------

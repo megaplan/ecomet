@@ -4,6 +4,8 @@
 -define(OWN_ID_LEN, 8).
 -define(MSG_ID_LEN, 8).
 -define(SETUP_CONSUMER_TIMEOUT, 10000).
+-define(QUEUE_MAX_DUR, 20000000).
+-define(QUEUE_MAX_LEN, 100).
 -define(T, 1000).
 -define(TC, 0).
 -define(LOG, "/var/log/erpher/ec").
@@ -18,6 +20,10 @@
     sock,
     lp_sock, % for long poll
     yaws_pid, % for long poll
+    clients = [], % in case of many requests with the very same id (quite unusual not to say sabotage)
+    queue,
+    qmax_dur = ?QUEUE_MAX_DUR, % microseconds
+    qmax_len = ?QUEUE_MAX_LEN,
     debug,
     conn, % #conn{}
     no_local = false, % for amqp consumer setup

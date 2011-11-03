@@ -15,13 +15,17 @@ out(A) ->
     end.
 
 proceed(A, Id) ->
-    Sock = A#arg.clisock,
+    %Sock = A#arg.clisock,
     Event = 'ev2',
     No_local = false,
-    Res = ecomet_server:add_lp(Sock, Event, No_local, Id),
+    Res = ecomet_server:get_lp_data(Event, No_local, Id),
     error_logger:info_report({?MODULE, "lp endpoint res", ?LINE, Event, Res}),
-    {ok, Pid} = Res,
-    MimeType = "text/html",
-    {streamcontent_from_pid, MimeType, Pid}.
+    case Res of
+        {ok, Text} ->
+            {html, Text};
+        _ ->
+            error_logger:info_report({?MODULE, "lp endpoint error res", ?LINE, Res}),
+            {html, "internal error"}
+    end.
 
 </erl>

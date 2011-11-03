@@ -33,7 +33,7 @@
 %%% Exports
 %%%----------------------------------------------------------------------------
 
--export([send_init_chunk/2, send_chunk/2, send_to_lp/2]).
+-export([send_chunk/2, send_to_lp/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -44,19 +44,6 @@
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
-%%
-%% @doc sends debug text to long polled socket. Unnecessary.
-%% @since 2011-11-01 17:57
-%% @todo remove it
-%%
--spec send_init_chunk(#child{}, pid()) -> #child{}.
-
-send_init_chunk(St, Yaws_pid) ->
-    %Data = "chunk init lp done",
-    %send_chunk(St, Data),
-    St#child{yaws_pid = Yaws_pid}.
-
-%%-----------------------------------------------------------------------------
 %%
 %% @doc sends data to long polled socket.
 %% @since 2011-11-01 17:57

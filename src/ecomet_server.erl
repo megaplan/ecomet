@@ -40,6 +40,7 @@
 -export([terminate/2, code_change/3]).
 -export([add_ws/1, add_ws/2, add_lp/3, add_lp/4]).
 -export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
+-export([get_lp_data/3]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -59,6 +60,10 @@ init(_) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
+handle_call({get_lp_data, Event, No_local, Id}, From, St) ->
+    mpln_p_debug:pr({?MODULE, 'get_lp_data', ?LINE, Id}, St#csr.debug, run, 2),
+    {Res, New} = process_lp_req(St, From, Event, No_local, Id),
+    {noreply, New, ?T};
 handle_call({add_lp, Sock, Event, No_local, Id}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_lp_child', ?LINE, Id}, St#csr.debug, run, 2),
     {Res, New} = check_lp_child(St, Sock, Event, No_local, Id),
@@ -153,6 +158,20 @@ add_lp(Sock, Event, true, Id) ->
     gen_server:call(?MODULE, {add_lp, Sock, Event, true, Id});
 add_lp(Sock, Event, _, Id) ->
     gen_server:call(?MODULE, {add_lp, Sock, Event, false, Id}).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc gets data for long poll client, creating a handler process if
+%% necessary that will handle a session for the given id.
+%% @since 2011-11-03 12:26
+%%
+-spec get_lp_data(any(), boolean(), non_neg_integer()) -> {ok, binary()}
+                                                              | {error, any()}.
+
+get_lp_data(Event, true, Id) ->
+    gen_server:call(?MODULE, {get_lp_data, Event, true, Id}, infinity);
+get_lp_data(Event, _, Id) ->
+    gen_server:call(?MODULE, {get_lp_data, Event, false, Id}, infinity).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -357,5 +376,27 @@ add_child_list(St, 'ws', Pid, Id, Id_web) ->
 add_child_list(St, 'lp', Pid, Id, Id_web) ->
     Ch = [ #chi{pid=Pid, id=Id, id_web=Id_web} | St#csr.lp_children],
     St#csr{lp_children=Ch}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates a handler process if it's not done yet, charges the process
+%% to do the work
+%%
+-spec process_lp_req(#csr{}, any(), any(), boolean(), non_neg_integer()) -> {
+                      {ok, binary()} | {error, any()},
+                      #csr{}
+                     }.
+
+process_lp_req(St, From, Event, No_local, Id) ->
+    case check_lp_child(St, undefined, Event, No_local, Id) of
+        {{ok, Pid}, St_c} ->
+            Res = ecomet_conn_server:get_lp_data(Pid, From),
+            {Res, St_c};
+        {{ok, Pid, _Info}, St_c} ->
+            Res = ecomet_conn_server:get_lp_data(Pid, From),
+            {Res, St_c};
+        {error, _Reason} = Res ->
+            {Res, St}
+    end.
 
 %%-----------------------------------------------------------------------------
