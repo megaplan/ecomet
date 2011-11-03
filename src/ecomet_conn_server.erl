@@ -85,8 +85,9 @@ init([List]) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
+%% @doc call from client via ecomet_server for long poll data
 handle_call({get_lp_data, Client}, _From, #child{clients=C} = St) ->
-    St_r = make_lp_result(St#child{clients=[Client|C]}),
+    St_r = send_one_queued_msg(St#child{clients=[Client|C]}),
     New = do_smth(St_r),
     {reply, ok, New, ?T};
 handle_call(stop, _From, St) ->
@@ -172,20 +173,6 @@ handle_info({tcp_closed, Sock} = Msg, #child{id=Id, type=ws, sock=Sock} = St) ->
                     St#child.debug, run, 2),
     {stop, normal, St};
 
-%% @doc long-poll init ok
-handle_info({ok, Yaws_pid}, #child{id=Id, type=lp} = St) ->
-    mpln_p_debug:pr({?MODULE, lp_init_ok, ?LINE, Id, Yaws_pid},
-                    St#child.debug, run, 2),
-    New = St#child{yaws_pid = Yaws_pid},
-    {noreply, New, ?T};
-
-%% @doc long-poll init failed
-handle_info({discard, Yaws_pid}, #child{id=Id, type=lp, lp_sock=Sock} = St) ->
-    mpln_p_debug:pr({?MODULE, lp_discard, ?LINE, Id, Yaws_pid},
-                    St#child.debug, run, 2),
-    yaws_api:stream_process_end(Sock, Yaws_pid),
-    {stop, normal, St};
-
 %% @doc unknown info
 handle_info(_N, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, info_other, ?LINE, Id, _N},
@@ -246,6 +233,9 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     C#child{start_time=now(), conn=Conn#conn{consumer_tag=Consumer_tag}}.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc checks whether the setup consumer confirmation comes too late
+%%
 check_start_time(#child{start_time = T1} = State) ->
     T2 = now(),
     Diff = timer:now_diff(T2, T1),
@@ -257,6 +247,9 @@ check_start_time(#child{start_time = T1} = State) ->
     end.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc does periodic things: clean queue, send queued messages, etc
+%%
 do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max} = State) ->
     Qnew = clean_queue(Q, Dur, Max),
     St_q = State#child{queue=Qnew},
@@ -303,10 +296,13 @@ send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
     end.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc proceeds sending the amqp message to websocket or stores it
+%% in a queue for later fetching it by long polling
+%%
 proceed_send(#child{type=ws} = St, Content) ->
     ecomet_handler_ws:send_to_ws(St, Content);
 proceed_send(#child{type=lp} = St, Content) ->
-    %ecomet_handler_lp:send_to_lp(St, Content).
     St_p = store_msg(St, Content),
     St_p.
 
@@ -332,6 +328,9 @@ clean_queue(Q, Dur, Max) ->
     clean_queue_by_time(Qlen, Dur).
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc gets rid the queue of ancient messages
+%%
 clean_queue_by_time(Q, Dur) ->
     Now = now(),
     F = fun({Time, _Data}) ->
@@ -340,6 +339,9 @@ clean_queue_by_time(Q, Dur) ->
     queue:filter(F, Q).
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc cleands the queue from surplus messages
+%%
 clean_queue_by_len(Q, Max) ->
     Len = queue:len(Q),
     if Len > Max ->
@@ -355,34 +357,16 @@ clean_queue_by_len(Q, Max) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates a response if there is an information available and sends
-%% it to the original client (which called ecomet_server).
+%% @doc sends one item to the client
 %%
--spec make_lp_result(#child{}) -> #child{}.
-
-make_lp_result(#child{queue=Q} = St) ->
-    case queue:out(Q) of
-        {{value, Item}, Q2} ->
-            make_lp_msg(St#child{queue=Q2}, Item);
-        _ ->
-            St
-    end.
-
-%%-----------------------------------------------------------------------------
-make_lp_msg(#child{id=Id, clients=[C|T]} = St, Item) ->
-    Resp = make_response(Item),
-    mpln_p_debug:pr({?MODULE, make_lp_msg,
-                     ?LINE, Id, Item, Resp},
-                    St#child.debug, lp, 6),
-    gen_server:reply(C, Resp),
-    St#child{clients=T}.
-
-%%-----------------------------------------------------------------------------
 send_one_response(Client, Item) ->
     Resp = make_response(Item),
     gen_server:reply(Client, Resp).
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc creates a response to send to the wire
+%%
 make_response({_Time, Data}) ->
     Body = <<
              "<pre>",
@@ -392,15 +376,36 @@ make_response({_Time, Data}) ->
     {ok, Body}.
 
 %%-----------------------------------------------------------------------------
-send_queued_msg(#child{queue=Q, clients=[C|T]} = St) ->
+%%
+%% @doc sends a response if there is information available
+%% to the original client (which called ecomet_server).
+%%
+send_msg_if_any(#child{queue=Q, clients=[C|T]} = St, Wipe) ->
     case queue:out(Q) of
+        {{value, Item}, Q2} when Wipe == true ->
+            send_one_response(C, Item),
+            send_msg_if_any(St#child{queue=Q2, clients=T}, Wipe);
         {{value, Item}, Q2} ->
             send_one_response(C, Item),
-            send_queued_msg(St#child{queue=Q2, clients=T});
+            St#child{queue=Q2, clients=T};
         _ ->
             St
     end;
-send_queued_msg(#child{clients=[]} = St) ->
+send_msg_if_any(#child{clients=[]} = St, _) ->
     St.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc sends all available messages to the original clients
+%%
+send_queued_msg(St) ->
+    send_msg_if_any(St, true).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc sends one available message to the original client
+%%
+send_one_queued_msg(St) ->
+    send_msg_if_any(St, false).
 
 %%-----------------------------------------------------------------------------
