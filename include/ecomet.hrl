@@ -3,8 +3,9 @@
 
 -define(OWN_ID_LEN, 8).
 -define(MSG_ID_LEN, 8).
--define(SETUP_CONSUMER_TIMEOUT, 10000).
--define(QUEUE_MAX_DUR, 20000000).
+-define(SETUP_CONSUMER_TIMEOUT, 10000). % milliseconds
+-define(IDLE_TIMEOUT, 300). % seconds
+-define(QUEUE_MAX_DUR, 20000000). % microseconds
 -define(QUEUE_MAX_LEN, 100).
 -define(T, 1000).
 -define(TC, 0).
@@ -17,6 +18,8 @@
     id_r, % rand id for simulating no_local amqp consumer
     id_web, % rand id from long poll web page
     start_time = {0,0,0},
+    last_use = {0,0,0},
+    idle_timeout = ?IDLE_TIMEOUT, % seconds
     sock,
     lp_sock, % for long poll
     yaws_pid, % for long poll

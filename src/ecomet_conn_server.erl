@@ -96,14 +96,16 @@ init([List]) ->
 %% @doc post request from client via ecomet_server
 handle_call({post_lp_data, Client, Data}, _From, St) ->
     St_r = process_lp_post(St, Client, Data),
-    New = do_smth(St_r),
+    St_i = update_idle(St_r),
+    New = do_smth(St_i),
     {reply, ok, New, ?T};
 
 %% @doc call from client via ecomet_server for long poll data
 %% @todo make it 'noreply' (is it necessary?)
 handle_call({get_lp_data, Client}, _From, #child{clients=C} = St) ->
     St_r = send_one_queued_msg(St#child{clients=[Client|C]}),
-    New = do_smth(St_r),
+    St_i = update_idle(St_r),
+    New = do_smth(St_i),
     {reply, ok, New, ?T};
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
@@ -124,7 +126,10 @@ handle_cast(_N, St) ->
     {noreply, New, ?T}.
 
 %%-----------------------------------------------------------------------------
-terminate(_, _State) ->
+terminate(_, #child{id=Id, conn=#conn{channel=Channel, consumer_tag = Tag}}
+          = St) ->
+    ecomet_rb:cancel_consumer(Channel, Tag),
+    mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id}, St#child.debug, run, 2),
     ok.
 
 %%-----------------------------------------------------------------------------
@@ -208,7 +213,8 @@ code_change(_Old_vsn, State, _Extra) ->
 -spec prepare_all(#child{}) -> #child{}.
 
 prepare_all(C) ->
-    Cq = prepare_queue(C),
+    Now = now(),
+    Cq = prepare_queue(C#child{start_time=Now, last_use=Now}),
     Cid = prepare_id(Cq),
     Cst = prepare_stat(Cid),
     prepare_rabbit(Cst).
@@ -245,7 +251,7 @@ prepare_stat(C) ->
 prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     mpln_p_debug:pr({?MODULE, prepare_rabbit, ?LINE, C}, C#child.debug, run, 6),
     Consumer_tag = ecomet_rb:prepare_queue(Conn, Event, No_local),
-    C#child{start_time=now(), conn=Conn#conn{consumer_tag=Consumer_tag}}.
+    C#child{conn=Conn#conn{consumer_tag=Consumer_tag}}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -266,6 +272,7 @@ check_start_time(#child{start_time = T1} = State) ->
 %% @doc does periodic things: clean queue, send queued messages, etc
 %%
 do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max} = State) ->
+    check_idle(State),
     Qnew = clean_queue(Q, Dur, Max),
     St_q = State#child{queue=Qnew},
     St_sent = send_queued_msg(St_q),
@@ -438,5 +445,27 @@ process_lp_post(#child{conn=Conn, event=Rt_key, id_r=Corr} = St,
 %%-----------------------------------------------------------------------------
 make_response_post() ->
     {ok, "posted ok"}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc updates idle timer on GET/POST requests.
+%%
+update_idle(St) ->
+    St#child{last_use=now()}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc checks idle timer and casts stop to itself if it is more than
+%% configured limit
+%%
+check_idle(#child{idle_timeout=Idle, last_use=T} = St) ->
+    Now = now(),
+    Delta = timer:now_diff(Now, T),
+    if Delta > Idle * 1000000 ->
+            mpln_p_debug:pr({?MODULE, "stop on idle", ?LINE}, St#child.debug, run, 2),
+            gen_server:cast(self(), stop);
+       true -> 
+            ok
+    end.
 
 %%-----------------------------------------------------------------------------

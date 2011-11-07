@@ -45,6 +45,7 @@
 -export([send_ack/2]).
 -export([prepare_queue/3]).
 -export([get_content_data/1]).
+-export([cancel_consumer/2]).
 
 %%%----------------------------------------------------------------------------
 %%% API
@@ -185,6 +186,19 @@ prepare_queue(#conn{channel=Channel, exchange=X, ticket=Ticket},
 
     setup_consumer(Channel, Q, No_local).
 
+%%-----------------------------------------------------------------------------
+%%
+%% @doc cancels consumer
+%% @since 2011-10-25 13:30
+%%
+cancel_consumer(Channel, ConsumerTag) ->
+    % After the consumer is finished interacting with the queue,
+    % it can deregister itself
+    BasicCancel = #'basic.cancel'{consumer_tag = ConsumerTag,
+        nowait = false},
+    #'basic.cancel_ok'{consumer_tag = ConsumerTag} =
+        amqp_channel:call(Channel,BasicCancel).
+
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
@@ -201,19 +215,6 @@ setup_consumer(Channel, Q, No_local) ->
     #'basic.consume_ok'{consumer_tag = ConsumerTag}
         = amqp_channel:subscribe(Channel, BasicConsume, self()),
     ConsumerTag
-.
-%%-----------------------------------------------------------------------------
-%%
-%% @doc cancels consumer
-%% @since 2011-10-25 13:30
-%%
-cancel_consumer(Channel, ConsumerTag) ->
-    % After the consumer is finished interacting with the queue,
-    % it can deregister itself
-    BasicCancel = #'basic.cancel'{consumer_tag = ConsumerTag,
-        nowait = false},
-    #'basic.cancel_ok'{consumer_tag = ConsumerTag} =
-        amqp_channel:call(Channel,BasicCancel)
 .
 %%-----------------------------------------------------------------------------
 %%

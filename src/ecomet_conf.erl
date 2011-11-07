@@ -68,6 +68,7 @@ get_config() ->
 %%
 get_child_config(List) ->
     #child{
+        idle_timeout = proplists:get_value(idle_timeout, List, ?IDLE_TIMEOUT),
         qmax_dur = proplists:get_value(qmax_dur, List, ?QUEUE_MAX_DUR),
         qmax_len = proplists:get_value(qmax_len, List, ?QUEUE_MAX_LEN),
         id_web = proplists:get_value(id_web, List),
