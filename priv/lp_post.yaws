@@ -28,7 +28,8 @@ proceed2(A, Id_str, Data) ->
     Event = 'ev2',
     No_local = false,
     Id = list_to_integer(Id_str),
-    Res = ecomet_server:lp_post(Event, No_local, Id, Data),
+    Bin = make_binary(Data),
+    Res = ecomet_server:lp_post(Event, No_local, Id, Bin),
     error_logger:info_report({?MODULE, "lp post res", ?LINE, Id, Res}),
     case Res of
         {ok, Text} ->
@@ -38,5 +39,12 @@ proceed2(A, Id_str, Data) ->
             error_logger:info_report({?MODULE, "lp post error res", ?LINE, Id, Res}),
             {html, "internal error"}
     end.
+
+make_binary(Data) when is_list(Data) ->
+    unicode:characters_to_binary(Data);
+make_binary(Data) when is_atom(Data) ->
+    atom_to_binary(Data, latin1);
+make_binary(Data) ->
+    Data.
 
 </erl>

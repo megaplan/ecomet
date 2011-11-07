@@ -94,7 +94,6 @@ init([List]) ->
 
 %%-----------------------------------------------------------------------------
 %% @doc post request from client via ecomet_server
-%% @todo make it 'noreply' (is it necessary?)
 handle_call({post_lp_data, Client, Data}, _From, St) ->
     St_r = process_lp_post(St, Client, Data),
     New = do_smth(St_r),
@@ -425,22 +424,16 @@ send_one_queued_msg(St) ->
     send_msg_if_any(St, false).
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc sends data to amqp, returns ok to original client
+%%
 process_lp_post(#child{conn=Conn, event=Rt_key, id_r=Corr} = St,
            Client, Data) ->
-    Bin = make_binary(Data),
     ecomet_rb:send_message(Conn#conn.channel, Conn#conn.exchange,
-                           Rt_key, Bin, Corr),
+                           Rt_key, Data, Corr),
     Resp = make_response_post(),
     gen_server:reply(Client, Resp),
     St.
-
-%%-----------------------------------------------------------------------------
-make_binary(Data) when is_list(Data) ->
-    unicode:characters_to_binary(Data);
-make_binary(Data) when is_atom(Data) ->
-    atom_to_binary(Data, latin1);
-make_binary(Data) ->
-    Data.
 
 %%-----------------------------------------------------------------------------
 make_response_post() ->
