@@ -18,7 +18,7 @@ proceed(A, Id) ->
     %Sock = A#arg.clisock,
     Event = 'ev2',
     No_local = false,
-    Res = ecomet_server:get_lp_data(Event, No_local, Id),
+    Res = ecomet_server:lp_get(Event, No_local, Id),
     error_logger:info_report({?MODULE, "lp endpoint res", ?LINE, Event, Res}),
     case Res of
         {ok, Text} ->

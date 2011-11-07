@@ -6,15 +6,17 @@ out(A) ->
     {abs_path, Path} = (A#arg.req)#http_request.path,
     %EndpointPath = filename:dirname(Path) ++ "lp_endpoint.yaws",
     Addr = filename:dirname(Path) ++ "lp_endpoint.yaws",
+    Addr_post = filename:dirname(Path) ++ "lp_post.yaws",
     %WebSocketLocation = Host ++ EndpointPath,
     %Body = html_body(WebSocketLocation),
-    error_logger:info_report({?MODULE, "out lp addr", ?LINE, Addr}),
-    Body = html_body(Addr),
+    Rand = get_id(A),
+    error_logger:info_report({?MODULE, "out lp addr, rand", ?LINE, Addr, Rand}),
+    Body = html_body(Addr, Addr_post, Rand),
     {content, "text/html", Body}.
 
 %% this html was copied from the basic example in
 %% http://github.com/davebryson/erlang_websocket/
-html_body(Addr) ->
+html_body(Addr, Addr_post, Rand) ->
 [
 "<html>
  <head>
@@ -69,7 +71,8 @@ html_body(Addr) ->
      };
 
      $(document).ready(function(){
-        rand_id = Math.floor(Math.random()*10000);
+        //rand_id = Math.floor(Math.random()*10000);
+        rand_id = ", Rand, ";
          waitForMsg(rand_id); /* Start the inital request */
      });
      </script>
@@ -80,8 +83,32 @@ html_body(Addr) ->
              BargePoll message requester!
          </div>
      </div>
+     <p>
+     <form action=\"", Addr_post, "\" method=\"post\">
+     <input type=\"hidden\" name=\"id_post1\" value=\"", Rand, "\">
+     <br>
+     <input type=\"text\" name=\"id_post2\" value=\"starting value\" size=\"50\" maxlength=\"50\">
+     <br>
+     </form>
+     <p>
  </body>
  </html>
 "].
+
+get_id(A) ->
+    Q = A#arg.querydata,
+    error_logger:info_report({?MODULE, "lp get_id q", ?LINE, Q}),
+    P = yaws_api:parse_query(A),
+    error_logger:info_report({?MODULE, "lp get_id p", ?LINE, P}),
+    case lists:keysearch("new_id", 1, P) of
+        {value, {"new_id", Id}} ->
+            error_logger:info_report({?MODULE, "lp get_id found id", ?LINE, Id}),
+            Id;
+        _ ->
+            error_logger:info_report({?MODULE, "lp get_id no id", ?LINE}),
+            Id = crypto:rand_uniform(0, 10000),
+            integer_to_list(Id)
+    end.
+
 </erl>
 

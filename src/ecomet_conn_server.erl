@@ -39,6 +39,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
 -export([get_lp_data/2, get_lp_data/3]).
+-export([post_lp_data/3, post_lp_data/4]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -57,6 +58,13 @@ get_lp_data(Pid, From) ->
 
 get_lp_data(Pid, From, Timeout) ->
     gen_server:call(Pid, {get_lp_data, From}, Timeout).
+
+%%-----------------------------------------------------------------------------
+post_lp_data(Pid, From, Data) ->
+    post_lp_data(Pid, From, Data, infinity).
+
+post_lp_data(Pid, From, Data, Timeout) ->
+    gen_server:call(Pid, {post_lp_data, From, Data}, Timeout).
 
 %%-----------------------------------------------------------------------------
 start() ->
@@ -85,7 +93,15 @@ init([List]) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
+%% @doc post request from client via ecomet_server
+%% @todo make it 'noreply' (is it necessary?)
+handle_call({post_lp_data, Client, Data}, _From, St) ->
+    St_r = process_lp_post(St, Client, Data),
+    New = do_smth(St_r),
+    {reply, ok, New, ?T};
+
 %% @doc call from client via ecomet_server for long poll data
+%% @todo make it 'noreply' (is it necessary?)
 handle_call({get_lp_data, Client}, _From, #child{clients=C} = St) ->
     St_r = send_one_queued_msg(St#child{clients=[Client|C]}),
     New = do_smth(St_r),
@@ -407,5 +423,27 @@ send_queued_msg(St) ->
 %%
 send_one_queued_msg(St) ->
     send_msg_if_any(St, false).
+
+%%-----------------------------------------------------------------------------
+process_lp_post(#child{conn=Conn, event=Rt_key, id_r=Corr} = St,
+           Client, Data) ->
+    Bin = make_binary(Data),
+    ecomet_rb:send_message(Conn#conn.channel, Conn#conn.exchange,
+                           Rt_key, Bin, Corr),
+    Resp = make_response_post(),
+    gen_server:reply(Client, Resp),
+    St.
+
+%%-----------------------------------------------------------------------------
+make_binary(Data) when is_list(Data) ->
+    unicode:characters_to_binary(Data);
+make_binary(Data) when is_atom(Data) ->
+    atom_to_binary(Data, latin1);
+make_binary(Data) ->
+    Data.
+
+%%-----------------------------------------------------------------------------
+make_response_post() ->
+    {ok, "posted ok"}.
 
 %%-----------------------------------------------------------------------------

@@ -1,0 +1,42 @@
+<erl> % -*-Erlang-*-
+
+out(A) -> 
+    Q = A#arg.querydata,
+    error_logger:info_report({?MODULE, "lp post q", ?LINE, Q}),
+    P = yaws_api:parse_post(A),
+    error_logger:info_report({?MODULE, "lp post p", ?LINE, P}),
+    case lists:keysearch("id_post1", 1, P) of
+        {value, {"id_post1", Id}} ->
+            error_logger:info_report({?MODULE, "lp post id", ?LINE, Id}),
+            proceed(A, P, Id);
+        _ ->
+            error_logger:info_report({?MODULE, "lp post no id", ?LINE}),
+            {html, "no post id found"}
+    end.
+
+proceed(A, P, Ids) ->
+    case lists:keysearch("id_post2", 1, P) of
+        {value, {"id_post2", Data}} ->
+            error_logger:info_report({?MODULE, "lp post data, id", ?LINE, Ids, Data}),
+            proceed2(A, Ids, Data);
+        _ ->
+            error_logger:info_report({?MODULE, "lp post no data, id", ?LINE, Ids}),
+            {html, ["no post data found for id=", Ids]}
+    end.
+
+proceed2(A, Id_str, Data) ->
+    Event = 'ev2',
+    No_local = false,
+    Id = list_to_integer(Id_str),
+    Res = ecomet_server:lp_post(Event, No_local, Id, Data),
+    error_logger:info_report({?MODULE, "lp post res", ?LINE, Id, Res}),
+    case Res of
+        {ok, Text} ->
+            %{html, Text};
+            {redirect_local, "/lp.yaws?new_id=" ++ Id_str};
+        _ ->
+            error_logger:info_report({?MODULE, "lp post error res", ?LINE, Id, Res}),
+            {html, "internal error"}
+    end.
+
+</erl>
