@@ -36,9 +36,11 @@ html_body(Addr, Addr_post, Rand) ->
          /* Simple helper to add a div.
          type is the name of a CSS class (old/new/error).
          msg is the contents of the div */
-         $(\"#messages\").append(
-             \"<div class='msg \"+ type +\"'>\"+ msg +\"</div>\"
-         );
+         document.getElementById(\"messages\").innerHTML = 
+             \"<div class='msg \"+ type +\"'>\"+ msg +\"</div>\";
+         //$(\"#messages\").append(
+         //    \"<div class='msg \"+ type +\"'>\"+ msg +\"</div>\"
+         //);
      }
 
      function waitForMsg(rand_id){
@@ -78,11 +80,6 @@ html_body(Addr, Addr_post, Rand) ->
      </script>
  </head>
  <body>
-     <div id=\"messages\">
-         <div class=\"msg old\">
-             BargePoll message requester!
-         </div>
-     </div>
      <p>
      <form action=\"", Addr_post, "\" method=\"post\">
      <input type=\"hidden\" name=\"id_post1\" value=\"", Rand, "\">
@@ -91,6 +88,11 @@ html_body(Addr, Addr_post, Rand) ->
      <br>
      </form>
      <p>
+     <div id=\"messages\">
+         <div class=\"msg old\">
+             BargePoll message requester!
+         </div>
+     </div>
  </body>
  </html>
 "].
