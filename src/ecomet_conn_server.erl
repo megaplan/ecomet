@@ -103,7 +103,8 @@ handle_call({post_lp_data, Client, Data}, _From, St) ->
 %% @doc call from client via ecomet_server for long poll data
 %% @todo make it 'noreply' (is it necessary?)
 handle_call({get_lp_data, Client}, _From, #child{clients=C} = St) ->
-    St_r = send_one_queued_msg(St#child{clients=[Client|C]}),
+    C_dat = #cli{from=Client, start=now()},
+    St_r = send_one_queued_msg(St#child{clients=[C_dat|C]}),
     St_i = update_idle(St_r),
     New = do_smth(St_i),
     {reply, ok, New, ?T};
@@ -274,8 +275,8 @@ check_start_time(#child{start_time = T1} = State) ->
 do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max} = State) ->
     check_idle(State),
     Qnew = clean_queue(Q, Dur, Max),
-    St_q = State#child{queue=Qnew},
-    St_sent = send_queued_msg(St_q),
+    St_c = clean_clients(State#child{queue=Qnew}),
+    St_sent = send_queued_msg(St_c),
     mpln_p_debug:pr({?MODULE, do_smth, ?LINE, Id, St_sent},
                     St_sent#child.debug, run, 7),
     St_sent.
@@ -381,8 +382,9 @@ clean_queue_by_len(Q, Max) ->
 %%
 %% @doc sends one item to the client
 %%
-send_one_response(Client, Item) ->
+send_one_response(St, #cli{from=Client}, Item) ->
     Resp = make_response(Item),
+    ecomet_test:dup_message_to_rabbit(St, Resp), % FIXME: for debug only
     gen_server:reply(Client, Resp).
 
 %%-----------------------------------------------------------------------------
@@ -405,10 +407,10 @@ make_response({_Time, Data}) ->
 send_msg_if_any(#child{queue=Q, clients=[C|T]} = St, Wipe) ->
     case queue:out(Q) of
         {{value, Item}, Q2} when Wipe == true ->
-            send_one_response(C, Item),
+            send_one_response(St, C, Item),
             send_msg_if_any(St#child{queue=Q2, clients=T}, Wipe);
         {{value, Item}, Q2} ->
-            send_one_response(C, Item),
+            send_one_response(St, C, Item),
             St#child{queue=Q2, clients=T};
         _ ->
             St
@@ -467,5 +469,17 @@ check_idle(#child{idle_timeout=Idle, last_use=T} = St) ->
        true -> 
             ok
     end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc removes old requests from long poll clients
+%%
+clean_clients(#child{lp_request_timeout=Timeout, clients=C} = St) ->
+    Now = now(),
+    F = fun(#cli{start=T}) ->
+                timer:now_diff(Now, T) =< Timeout * 1000000
+        end,
+    New = lists:filter(F, C),
+    St#child{clients=New}.
 
 %%-----------------------------------------------------------------------------

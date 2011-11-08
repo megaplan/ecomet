@@ -5,6 +5,7 @@
 -define(MSG_ID_LEN, 8).
 -define(SETUP_CONSUMER_TIMEOUT, 10000). % milliseconds
 -define(IDLE_TIMEOUT, 300). % seconds
+-define(LP_REQUEST_TIMEOUT, 300). % seconds
 -define(QUEUE_MAX_DUR, 20000000). % microseconds
 -define(QUEUE_MAX_LEN, 100).
 -define(T, 1000).
@@ -19,7 +20,8 @@
     id_web, % rand id from long poll web page
     start_time = {0,0,0},
     last_use = {0,0,0},
-    idle_timeout = ?IDLE_TIMEOUT, % seconds
+    idle_timeout = ?IDLE_TIMEOUT,
+    lp_request_timeout = ?LP_REQUEST_TIMEOUT,
     sock,
     lp_sock, % for long poll
     yaws_pid, % for long poll
@@ -33,6 +35,11 @@
     type :: 'ws' | 'lp', % web socket or long polling
     event,
     stat % #stat{}
+}).
+
+-record(cli, {
+    from,
+    start={0,0,0} % time in now() format
 }).
 
 -record(chi, {
