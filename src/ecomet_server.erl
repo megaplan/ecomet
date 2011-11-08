@@ -390,12 +390,18 @@ charge_child(St, Pid) ->
     {{ok, Pid}, St}.
 
 %%-----------------------------------------------------------------------------
-add_child_list(St, 'ws', Pid, Id, Id_web) ->
-    Ch = [ #chi{pid=Pid, id=Id, id_web=Id_web} | St#csr.ws_children],
-    St#csr{ws_children=Ch};
-add_child_list(St, 'lp', Pid, Id, Id_web) ->
-    Ch = [ #chi{pid=Pid, id=Id, id_web=Id_web} | St#csr.lp_children],
-    St#csr{lp_children=Ch}.
+%%
+%% @doc adds child info into appropriate list - either web socket or long poll
+%% in dependence of given child type.
+%%
+add_child_list(St, Type, Pid, Id, Id_web) ->
+    Data = #chi{pid=Pid, id=Id, id_web=Id_web, start=now()},
+    add_child_list2(St, Type, Data).
+
+add_child_list2(#csr{ws_children=C} = St, 'ws', Data) ->
+    St#csr{ws_children=[Data | C]};
+add_child_list2(#csr{lp_children=C} = St, 'lp', Data) ->
+    St#csr{lp_children=[Data | C]}.
 
 %%-----------------------------------------------------------------------------
 %%

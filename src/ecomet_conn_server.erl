@@ -384,7 +384,8 @@ clean_queue_by_len(Q, Max) ->
 %%
 send_one_response(St, #cli{from=Client}, Item) ->
     Resp = make_response(Item),
-    ecomet_test:dup_message_to_rabbit(St, Resp), % FIXME: for debug only
+    {ok, Dup_data} = Resp,
+    ecomet_test:dup_message_to_rabbit(St, Dup_data), % FIXME: for debug only
     gen_server:reply(Client, Resp).
 
 %%-----------------------------------------------------------------------------
