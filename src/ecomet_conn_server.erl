@@ -260,7 +260,7 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
 check_start_time(#child{start_time = T1} = State) ->
     T2 = now(),
     Diff = timer:now_diff(T2, T1),
-    if  Diff > ?SETUP_CONSUMER_TIMEOUT ->
+    if  Diff > ?SETUP_CONSUMER_TIMEOUT * 1000 ->
             {stop, consumer_setup_timeout, State};
         true ->
             New = State#child{conn=(State#child.conn)#conn{consumer=ok}},
