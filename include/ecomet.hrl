@@ -58,6 +58,7 @@
     log,
     conn, % #conn{}
     rses, % #rses{}
+    stat, % #stat{}
     debug
 }).
 

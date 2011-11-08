@@ -47,6 +47,7 @@
 %%%----------------------------------------------------------------------------
 
 -include("ecomet.hrl").
+-include("ecomet_stat.hrl").
 
 %%%----------------------------------------------------------------------------
 %%% gen_server callbacks
@@ -86,6 +87,12 @@ handle_call(_N, _From, St) ->
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
     {stop, normal, St};
+handle_cast(add_rabbit_inc_other_stat, St) ->
+    New = add_msg_stat(St, inc_other),
+    {noreply, New, ?T};
+handle_cast(add_rabbit_inc_own_stat, St) ->
+    New = add_msg_stat(St, inc_own),
+    {noreply, New, ?T};
 handle_cast(_, St) ->
     {noreply, St, ?T}.
 
@@ -305,7 +312,8 @@ prepare_log(#csr{log=Log}) ->
 
 prepare_all(C) ->
     prepare_log(C),
-    New = prepare_rabbit(C),
+    Cst = prepare_stat(C),
+    New = prepare_rabbit(Cst),
     start_yaws(C),
     New.
 
@@ -318,6 +326,25 @@ prepare_all(C) ->
 prepare_rabbit(C) ->
     Conn = ecomet_rb:start(C#csr.rses),
     C#csr{conn=Conn}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc initializes statistic
+%%
+prepare_stat(C) ->
+    St = #stat{rabbit=
+                   {
+                 ecomet_stat:init(),
+                 ecomet_stat:init(),
+                 ecomet_stat:init()
+                },
+               wsock={
+                 ecomet_stat:init(),
+                 ecomet_stat:init(),
+                 ecomet_stat:init()
+                }
+              },
+    C#csr{stat=St}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -448,5 +475,11 @@ process_lp_post(St, From, Event, No_local, Id, Data) ->
         {error, _Reason} = Res ->
             {Res, St}
     end.
+
+%%-----------------------------------------------------------------------------
+add_msg_stat(#csr{stat=#stat{rabbit=Rb_stat} = Stat} = State, Tag) ->
+    New_rb_stat = ecomet_stat:add_server_stat(Rb_stat, Tag),
+    New_stat = Stat#stat{rabbit=New_rb_stat},
+    State#csr{stat = New_stat}.
 
 %%-----------------------------------------------------------------------------

@@ -34,6 +34,7 @@
 %%%----------------------------------------------------------------------------
 
 -export([add_own_msg/1, add_other_msg/1, init/0]).
+-export([add_server_stat/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -45,6 +46,19 @@
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
+%%
+%% @doc updates any server statistic for given tag
+%% @since 2011-11-08 17:19
+%%
+-spec add_server_stat(T, atom()) -> T.
+
+add_server_stat(Storages, Tag) ->
+    {Dstat, Hstat, Mstat} = Storages,
+    Mnew = add_min_stat(Mstat, Tag),
+    Hnew = add_hour_stat(Hstat, Tag),
+    {Dstat, Hnew, Mnew}.
+
+%%-----------------------------------------------------------------------------
 %%
 %% @doc updates statistic for own incoming messages
 %% @since 2011-10-28 15:21
