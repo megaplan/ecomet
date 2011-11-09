@@ -204,6 +204,8 @@ cancel_consumer(Channel, ConsumerTag) ->
 %%%----------------------------------------------------------------------------
 %%
 %% @doc setups consumer for given queue at given exchange
+%% Rabbit ignores no_local at the moment, so it is handled in our connection
+%% handler later
 %% @since 2011-10-25 13:30
 %%
 -spec setup_consumer(any(), any(), boolean()) -> any().

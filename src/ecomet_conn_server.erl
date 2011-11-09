@@ -38,8 +38,9 @@
 -export([start/0, start_link/0, start_link/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
--export([get_lp_data/2, get_lp_data/3]).
--export([post_lp_data/3, post_lp_data/4]).
+-export([get_lp_data/2]).
+-export([post_lp_data/3]).
+-export([subscribe/4]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -67,6 +68,13 @@ post_lp_data(Pid, From, Data, Timeout) ->
     gen_server:call(Pid, {post_lp_data, From, Data}, Timeout).
 
 %%-----------------------------------------------------------------------------
+subscribe(Pid, From, Event, No_local) ->
+    subscribe(Pid, From, Event, No_local, infinity).
+
+subscribe(Pid, From, Event, No_local, Timeout) ->
+    gen_server:call(Pid, {subscribe, From, Event, No_local}, Timeout).
+
+%%-----------------------------------------------------------------------------
 start() ->
     start_link().
 
@@ -87,12 +95,21 @@ stop(Pid) ->
 %%%----------------------------------------------------------------------------
 init([List]) ->
     C = ecomet_conf:get_child_config(List),
+    mpln_p_debug:pr({?MODULE, init_start, ?LINE}, C#child.debug, run, 3),
     New = prepare_all(C),
     mpln_p_debug:pr({?MODULE, init, ?LINE, New}, C#child.debug, run, 6),
     mpln_p_debug:pr({?MODULE, init_done, ?LINE}, C#child.debug, run, 2),
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
+%% @doc subscribe request from client via ecomet_server
+handle_call({subscribe, Client, Event, No_local}, _From, #child{id=Id} = St) ->
+    mpln_p_debug:pr({?MODULE, subscribe, ?LINE, Id}, St#child.debug, run, 3),
+    St_s = do_subscribe(St, Client, Event, No_local),
+    St_i = update_idle(St_s),
+    New = do_smth(St_i),
+    {reply, ok, New, ?T};
+
 %% @doc post request from client via ecomet_server
 handle_call({post_lp_data, Client, Data}, _From, St) ->
     St_r = process_lp_post(St, Client, Data),
@@ -150,14 +167,8 @@ handle_info(#'basic.consume_ok'{consumer_tag = Tag},
                    conn=#conn{consumer_tag = Tag, consumer=undefined}} = St) ->
     mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Id, Tag},
                     St#child.debug, run, 2),
-    New = do_smth(St),
-    check_start_time(New);
-
-%% @doc wrong amqp setup consumer confirmation
-handle_info(timeout, #child{id=Id, conn=#conn{consumer=undefined}} = St) ->
-    mpln_p_debug:pr({?MODULE, consume_extra, ?LINE, Id}, St#child.debug, run, 0),
-    New = do_smth(St),
-    check_start_time(New);
+    New = do_smth(St#child{conn=(St#child.conn)#conn{consumer=ok}}),
+    {noreply, New, ?T};
 
 handle_info(timeout, St) ->
     New = do_smth(St),
@@ -253,20 +264,6 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     mpln_p_debug:pr({?MODULE, prepare_rabbit, ?LINE, C}, C#child.debug, run, 6),
     Consumer_tag = ecomet_rb:prepare_queue(Conn, Event, No_local),
     C#child{conn=Conn#conn{consumer_tag=Consumer_tag}}.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc checks whether the setup consumer confirmation comes too late
-%%
-check_start_time(#child{start_time = T1} = State) ->
-    T2 = now(),
-    Diff = timer:now_diff(T2, T1),
-    if  Diff > ?SETUP_CONSUMER_TIMEOUT * 1000 ->
-            {stop, consumer_setup_timeout, State};
-        true ->
-            New = State#child{conn=(State#child.conn)#conn{consumer=ok}},
-            {noreply, New, ?T}
-    end.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -482,5 +479,16 @@ clean_clients(#child{lp_request_timeout=Timeout, clients=C} = St) ->
         end,
     New = lists:filter(F, C),
     St#child{clients=New}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc subscribes itself itself to messages with the given routing key
+%%
+-spec do_subscribe(#child{}, any(), string() | binary(), boolean()) -> #child{}.
+
+do_subscribe(St, Client, Event, No_local) ->
+    New = prepare_rabbit(St#child{event=Event, no_local=No_local}),
+    gen_server:reply(Client, ok),
+    New.
 
 %%-----------------------------------------------------------------------------

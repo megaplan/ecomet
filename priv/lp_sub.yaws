@@ -1,0 +1,46 @@
+
+<erl>
+
+out(A) ->
+    {abs_path, Path} = (A#arg.req)#http_request.path,
+    Addr = filename:dirname(Path) ++ "lp_sub_do.yaws",
+    Rand = get_id(A),
+    error_logger:info_report({?MODULE, "out lp_sub addr, rand", ?LINE, Addr, Rand}),
+    Body = html_body(Addr, Rand),
+    {content, "text/html", Body}.
+
+html_body(Addr, Rand) ->
+[
+"<html>
+ <body>
+     <p>
+     <form action=\"", Addr, "\" method=\"post\">
+     routing key:
+     <br>
+     <input type=\"hidden\" name=\"id_sub\" value=\"", Rand, "\">
+     <br>
+     <input type=\"text\" name=\"id_sub_rtkey\" value=\"ev2\" size=\"50\" maxlength=\"50\">
+     <br>
+     </form>
+     <p>
+ </body>
+ </html>
+"].
+
+get_id(A) ->
+    Q = A#arg.querydata,
+    error_logger:info_report({?MODULE, "lp_sub get_id q", ?LINE, Q}),
+    P = yaws_api:parse_query(A),
+    error_logger:info_report({?MODULE, "lp_sub get_id p", ?LINE, P}),
+    case lists:keysearch("new_id", 1, P) of
+        {value, {"new_id", Id}} ->
+            error_logger:info_report({?MODULE, "lp_sub get_id found id", ?LINE, Id}),
+            Id;
+        _ ->
+            error_logger:info_report({?MODULE, "lp_sub get_id no id", ?LINE}),
+            Id = crypto:rand_uniform(0, 10000),
+            integer_to_list(Id)
+    end.
+
+</erl>
+

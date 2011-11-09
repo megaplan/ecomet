@@ -41,6 +41,7 @@
 -export([add_ws/1, add_ws/2, add_lp/3, add_lp/4]).
 -export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
 -export([lp_get/3, lp_post/4]).
+-export([subscribe/4]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -61,13 +62,17 @@ init(_) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
+handle_call({subscribe, Type, Event, No_local, Id}, From, St) ->
+    mpln_p_debug:pr({?MODULE, 'subscribe', ?LINE, Id}, St#csr.debug, run, 2),
+    New = process_subscribe(St, From, Type, Event, No_local, Id),
+    {noreply, New, ?T};
 handle_call({post_lp_data, Event, No_local, Id, Data}, From, St) ->
     mpln_p_debug:pr({?MODULE, 'post_lp_data', ?LINE, Id}, St#csr.debug, run, 2),
-    {Res, New} = process_lp_post(St, From, Event, No_local, Id, Data),
+    New = process_lp_post(St, From, Event, No_local, Id, Data),
     {noreply, New, ?T};
 handle_call({get_lp_data, Event, No_local, Id}, From, St) ->
     mpln_p_debug:pr({?MODULE, 'get_lp_data', ?LINE, Id}, St#csr.debug, run, 2),
-    {Res, New} = process_lp_req(St, From, Event, No_local, Id),
+    New = process_lp_req(St, From, Event, No_local, Id),
     {noreply, New, ?T};
 handle_call({add_lp, Sock, Event, No_local, Id}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_lp_child', ?LINE, Id}, St#csr.debug, run, 2),
@@ -200,6 +205,18 @@ lp_post(Event, _, Id, Data) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc subscribes the client with given id to the given topic in amqp
+%% @since 2011-11-08 18:26
+%%
+-spec subscribe('ws' | 'lp', binary() | string(), boolean(),
+                non_neg_integer()) ->
+                       {ok, binary()} | {error, any()}.
+
+subscribe(Type, Event, No_local, Id) ->
+    gen_server:call(?MODULE, {subscribe, Type, Event, No_local, Id}, infinity).
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc updates statistic messages
 %% @since 2011-10-28 16:21
 %%
@@ -244,12 +261,13 @@ add_ws_child(St, Event, No_local) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc creates child, stores its pid in state, checks for error
+%% @todo decide about policy on error
 %%
 -spec add_child(#csr{}, any(), any(), boolean(), 'ws' | 'lp',
                 undefined | non_neg_integer()) ->
                        {{ok, pid()}, #csr{}}
                            | {{ok, pid(), any()}, #csr{}}
-                           | {error, #csr{}}.
+                           | {{error, any()}, #csr{}}.
 
 add_child(St, Sock, Event, No_local, Type, Id_web) ->
     Id = make_ref(),
@@ -261,6 +279,8 @@ add_child(St, Sock, Event, No_local, Type, Id_web) ->
             {lp_sock, Sock},
             {type, Type}
             | St#csr.child_config],
+    mpln_p_debug:pr({?MODULE, "start child prepared", ?LINE, Id, Pars},
+                    St#csr.debug, child, 4),
     Res = do_start_child(Id, Pars),
     mpln_p_debug:pr({?MODULE, "start child result", ?LINE, Id, Pars, Res},
                     St#csr.debug, child, 4),
@@ -353,13 +373,13 @@ prepare_stat(C) ->
 %% @todo decide which policy is better - connection restart or terminate itself
 %%
 check_error(St, {{noproc, _Reason}, _Other}) ->
-    mpln_p_debug:pr({?MODULE, "check_error", ?LINE}, St#csr.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, "check_error", ?LINE}, St#csr.debug, run, 3),
     New = reconnect(St),
-    mpln_p_debug:pr({?MODULE, "check_error new st", ?LINE, New}, St#csr.debug, run, 2),
-    {error, New};
-check_error(St, _Other) ->
-    mpln_p_debug:pr({?MODULE, "check_error other", ?LINE}, St#csr.debug, run, 2),
-    {error, St}.
+    mpln_p_debug:pr({?MODULE, "check_error new st", ?LINE, New}, St#csr.debug, run, 6),
+    {{error, noproc}, New};
+check_error(St, Other) ->
+    mpln_p_debug:pr({?MODULE, "check_error other", ?LINE}, St#csr.debug, run, 3),
+    {{error, Other}, St}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -371,13 +391,31 @@ reconnect(St) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc checks whether the child with given type and id is alive
+%%
+ensure_child(#csr{ws_children=Ch} = St, 'ws', Id) ->
+    case is_child_alive(St, Ch, Id) of
+        {true, I} ->
+            {{ok, I#chi.pid}, St};
+        {false, _} ->
+            {error, no_websocket_child}
+    end;
+ensure_child(St, 'lp', Id) ->
+    check_lp_child(St, undefined, undefined, undefined, Id).
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc checks whether the child with given id is alive. If yes, then
 %% charges it to do some work, otherwise creates the one
 %%
--spec check_lp_child(#csr{}, any(), binary(), boolean(), non_neg_integer()) ->
+-spec check_lp_child(#csr{},
+                     undefined | any(),
+                     undefined | binary(),
+                     undefined | boolean(),
+                     non_neg_integer()) ->
                             {{ok, pid()}, #csr{}}
                                 | {{ok, pid(), any()}, #csr{}}
-                                | {error, #csr{}}.
+                                | {{error, any()}, #csr{}}.
 
 check_lp_child(#csr{lp_children = Ch} = St, Sock, Event, No_local, Id) ->
     case is_child_alive(St, Ch, Id) of
@@ -435,21 +473,20 @@ add_child_list2(#csr{lp_children=C} = St, 'lp', Data) ->
 %% @doc creates a handler process if it's not done yet, charges the process
 %% to do the work
 %%
--spec process_lp_req(#csr{}, any(), any(), boolean(), non_neg_integer()) -> {
-                      {ok, binary()} | {error, any()},
-                      #csr{}
-                     }.
+-spec process_lp_req(#csr{}, any(), any(), boolean(), non_neg_integer()) ->
+                      #csr{}.
 
 process_lp_req(St, From, Event, No_local, Id) ->
     case check_lp_child(St, undefined, Event, No_local, Id) of
         {{ok, Pid}, St_c} ->
-            Res = ecomet_conn_server:get_lp_data(Pid, From),
-            {Res, St_c};
+            ecomet_conn_server:get_lp_data(Pid, From),
+            St_c;
         {{ok, Pid, _Info}, St_c} ->
-            Res = ecomet_conn_server:get_lp_data(Pid, From),
-            {Res, St_c};
-        {error, _Reason} = Res ->
-            {Res, St}
+            ecomet_conn_server:get_lp_data(Pid, From),
+            St_c;
+        {{error, _Reason} = Res, _New_st} ->
+            gen_server:reply(From, Res),
+            St
     end.
 
 %%-----------------------------------------------------------------------------
@@ -458,22 +495,19 @@ process_lp_req(St, From, Event, No_local, Id) ->
 %% to handle the post request
 %%
 -spec process_lp_post(#csr{}, any(), any(), boolean(),  non_neg_integer(),
-                      binary()) ->
-                             {
-                       {ok, binary()} | {error, any()},
-                       #csr{}
-                      }.
+                      binary()) -> #csr{}.
 
 process_lp_post(St, From, Event, No_local, Id, Data) ->
     case check_lp_child(St, undefined, Event, No_local, Id) of
         {{ok, Pid}, St_c} ->
-            Res = ecomet_conn_server:post_lp_data(Pid, From, Data),
-            {Res, St_c};
+            ecomet_conn_server:post_lp_data(Pid, From, Data),
+            St_c;
         {{ok, Pid, _Info}, St_c} ->
-            Res = ecomet_conn_server:post_lp_data(Pid, From, Data),
-            {Res, St_c};
-        {error, _Reason} = Res ->
-            {Res, St}
+            ecomet_conn_server:post_lp_data(Pid, From, Data),
+            St_c;
+        {{error, _Reason} = Res, _New_st} ->
+            gen_server:reply(From, Res),
+            St
     end.
 
 %%-----------------------------------------------------------------------------
@@ -481,5 +515,31 @@ add_msg_stat(#csr{stat=#stat{rabbit=Rb_stat} = Stat} = State, Tag) ->
     New_rb_stat = ecomet_stat:add_server_stat(Rb_stat, Tag),
     New_stat = Stat#stat{rabbit=New_rb_stat},
     State#csr{stat = New_stat}.
+
+%%-----------------------------------------------------------------------------
+-spec process_subscribe(#csr{}, any(), 'ws'|'lp', binary(), boolean(),
+                        non_neg_integer()) -> #csr{}.
+
+process_subscribe(St, From, Type, Event, No_local, Id) ->
+    mpln_p_debug:pr({?MODULE, "process_subscribe", ?LINE,
+                     From, Type, Event, No_local, Id},
+                    St#csr.debug, child, 4),
+    case ensure_child(St, Type, Id) of
+        {{ok, Pid}, St_c} ->
+            mpln_p_debug:pr({?MODULE, "process_subscribe ok 1", ?LINE, Id},
+                            St#csr.debug, child, 4),
+            ecomet_conn_server:subscribe(Pid, From, Event, No_local),
+            St_c;
+        {{ok, Pid, _Info}, St_c} ->
+            mpln_p_debug:pr({?MODULE, "process_subscribe ok 2", ?LINE, Id},
+                            St#csr.debug, child, 4),
+            ecomet_conn_server:subscribe(Pid, From, Event, No_local),
+            St_c;
+        {error, _Reason} = Res ->
+            mpln_p_debug:pr({?MODULE, "process_subscribe err 1", ?LINE, Id, Res},
+                            St#csr.debug, child, 2),
+            gen_server:reply(From, Res),
+            St
+    end.
 
 %%-----------------------------------------------------------------------------

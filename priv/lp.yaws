@@ -75,6 +75,7 @@ html_body(Addr, Addr_post, Rand) ->
      $(document).ready(function(){
         //rand_id = Math.floor(Math.random()*10000);
         rand_id = ", Rand, ";
+        // send to client: id, subscribe tag, no_local
          waitForMsg(rand_id); /* Start the inital request */
      });
      </script>

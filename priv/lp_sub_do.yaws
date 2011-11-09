@@ -1,0 +1,48 @@
+<erl> % -*-Erlang-*-
+
+out(A) -> 
+    Q = A#arg.querydata,
+    error_logger:info_report({?MODULE, "lp sub q", ?LINE, Q}),
+    P = yaws_api:parse_post(A),
+    error_logger:info_report({?MODULE, "lp sub p", ?LINE, P}),
+    case lists:keysearch("id_sub", 1, P) of
+        {value, {"id_sub", Id}} ->
+            error_logger:info_report({?MODULE, "lp sub id", ?LINE, Id}),
+            proceed(A, P, Id);
+        _ ->
+            error_logger:info_report({?MODULE, "lp sub no id", ?LINE}),
+            {html, "no sub id found"}
+    end.
+
+proceed(A, P, Ids) ->
+    case lists:keysearch("id_sub_rtkey", 1, P) of
+        {value, {"id_sub_rtkey", Data}} ->
+            error_logger:info_report({?MODULE, "lp sub rtkey, id", ?LINE, Ids, Data}),
+            proceed2(A, Ids, Data);
+        _ ->
+            error_logger:info_report({?MODULE, "lp sub no rtkey, id", ?LINE, Ids}),
+            {html, ["no sub rtkey found for id=", Ids]}
+    end.
+
+proceed2(A, Id_str, Event) ->
+    No_local = false,
+    Id = list_to_integer(Id_str),
+    Ev_bin = make_binary(Event),
+    Res = ecomet_server:subscribe('lp', Ev_bin, No_local, Id),
+    error_logger:info_report({?MODULE, "lp sub res", ?LINE, Id, Res}),
+    case Res of
+        ok ->
+            {redirect_local, "/lp.yaws?new_id=" ++ Id_str};
+        _ ->
+            error_logger:info_report({?MODULE, "lp sub error res", ?LINE, Id, Res}),
+            {html, "internal error"}
+    end.
+
+make_binary(Data) when is_list(Data) ->
+    unicode:characters_to_binary(Data);
+make_binary(Data) when is_atom(Data) ->
+    atom_to_binary(Data, latin1);
+make_binary(Data) ->
+    Data.
+
+</erl>

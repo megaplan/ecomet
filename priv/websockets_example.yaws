@@ -35,6 +35,7 @@ html_body(WebSocketLocation) ->
           $('connect').className='hidden';
           $('connected').className='';
           $('phrase').focus();
+          // send to client: id, subscribe tag, no_local
           client._send('client-connected');
        },
         _send: function(message){
