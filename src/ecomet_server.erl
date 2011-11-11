@@ -40,7 +40,7 @@
 -export([terminate/2, code_change/3]).
 -export([add_ws/1, add_ws/2, add_lp/3, add_lp/4]).
 -export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
--export([lp_get/3, lp_post/4]).
+-export([lp_get/3, lp_post/4, lp_pid/1]).
 -export([subscribe/4]).
 
 %%%----------------------------------------------------------------------------
@@ -64,42 +64,56 @@ init(_) ->
 %%-----------------------------------------------------------------------------
 handle_call({subscribe, Type, Event, No_local, Id}, From, St) ->
     mpln_p_debug:pr({?MODULE, 'subscribe', ?LINE, Id}, St#csr.debug, run, 2),
-    New = process_subscribe(St, From, Type, Event, No_local, Id),
+    St_s = process_subscribe(St, From, Type, Event, No_local, Id),
+    New = do_smth(St_s),
     {noreply, New, ?T};
 handle_call({post_lp_data, Event, No_local, Id, Data}, From, St) ->
     mpln_p_debug:pr({?MODULE, 'post_lp_data', ?LINE, Id}, St#csr.debug, run, 2),
-    New = process_lp_post(St, From, Event, No_local, Id, Data),
+    St_p = process_lp_post(St, From, Event, No_local, Id, Data),
+    New = do_smth(St_p),
     {noreply, New, ?T};
 handle_call({get_lp_data, Event, No_local, Id}, From, St) ->
     mpln_p_debug:pr({?MODULE, 'get_lp_data', ?LINE, Id}, St#csr.debug, run, 2),
-    New = process_lp_req(St, From, Event, No_local, Id),
+    St_p = process_lp_req(St, From, Event, No_local, Id),
+    New = do_smth(St_p),
     {noreply, New, ?T};
 handle_call({add_lp, Sock, Event, No_local, Id}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_lp_child', ?LINE, Id}, St#csr.debug, run, 2),
-    {Res, New} = check_lp_child(St, Sock, Event, No_local, Id),
+    {Res, St_c} = check_lp_child(St, Sock, Event, No_local, Id),
+    New = do_smth(St_c),
     {reply, Res, New, ?T};
 handle_call({add_ws, Event, No_local}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_ws_child', ?LINE}, St#csr.debug, run, 2),
-    {Res, New} = add_ws_child(St, Event, No_local),
+    {Res, St_c} = add_ws_child(St, Event, No_local),
+    New = do_smth(St_c),
     {reply, Res, New, ?T};
 handle_call(status, _From, St) ->
-    {reply, St, St, ?T};
+    New = do_smth(St),
+    {reply, St, New, ?T};
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 handle_call(_N, _From, St) ->
-    {reply, {error, unknown_request}, St, ?T}.
+    New = do_smth(St),
+    {reply, {error, unknown_request}, New, ?T}.
 
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
     {stop, normal, St};
 handle_cast(add_rabbit_inc_other_stat, St) ->
-    New = add_msg_stat(St, inc_other),
+    St_s = add_msg_stat(St, inc_other),
+    New = do_smth(St_s),
     {noreply, New, ?T};
 handle_cast(add_rabbit_inc_own_stat, St) ->
-    New = add_msg_stat(St, inc_own),
+    St_s = add_msg_stat(St, inc_own),
+    New = do_smth(St_s),
+    {noreply, New, ?T};
+handle_cast({lp_pid, Pid}, St) ->
+    St_p = add_lp_pid(St, Pid),
+    New = do_smth(St_p),
     {noreply, New, ?T};
 handle_cast(_, St) ->
-    {noreply, St, ?T}.
+    New = do_smth(St),
+    {noreply, New, ?T}.
 
 %%-----------------------------------------------------------------------------
 terminate(_, _State) ->
@@ -107,6 +121,9 @@ terminate(_, _State) ->
     ok.
 
 %%-----------------------------------------------------------------------------
+handle_info(timeout, State) ->
+    New = do_smth(State),
+    {noreply, New, ?T};
 handle_info(_, State) ->
     {noreply, State, ?T}.
 
@@ -202,6 +219,10 @@ lp_post(Event, true, Id, Data) ->
     gen_server:call(?MODULE, {post_lp_data, Event, true, Id, Data}, infinity);
 lp_post(Event, _, Id, Data) ->
     gen_server:call(?MODULE, {post_lp_data, Event, false, Id, Data}, infinity).
+
+%%-----------------------------------------------------------------------------
+lp_pid(Pid) ->
+    gen_server:cast(?MODULE, {lp_pid, Pid}).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -541,5 +562,43 @@ process_subscribe(St, From, Type, Event, No_local, Id) ->
             gen_server:reply(From, Res),
             St
     end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc adds yaws process that serves long poll piece of s^H data to the
+%% list for later terminating
+%%
+add_lp_pid(#csr{lp_yaws=L} = St, Pid) ->
+    Y = #yp{pid = Pid, start = now()},
+    St#csr{lp_yaws = [Y | L]}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc does periodic tasks: clean yaws long poll process, etc
+%%
+do_smth(St) ->
+    St_lp = clean_yaws_long_poll(St),
+    St_lp.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc iterates over the list of yaws long poll processes and terminates
+%% those that last too long
+%% @todo rewrite it to use legal Yaws API and not "fast and dirty hacks"
+%% @todo do it on timer (say once a second) and not always
+%%
+clean_yaws_long_poll(#csr{yaws_lp_request_timeout=Timeout, lp_yaws=L} = St) ->
+    Now = now(),
+    F = fun(#yp{pid=Pid, start=T} = Ypid, Acc) ->
+                Delta = timer:now_diff(Now, T),
+                if Delta > Timeout * 1000000 ->
+                        exit(Pid, kill),
+                        Acc;
+                   true ->
+                        [Ypid | Acc]
+                end
+        end,
+    New_list = lists:foldl(F, [], L),
+    St#csr{lp_yaws=New_list}.
 
 %%-----------------------------------------------------------------------------

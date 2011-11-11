@@ -10,7 +10,8 @@ out(A) ->
     %WebSocketLocation = Host ++ EndpointPath,
     %Body = html_body(WebSocketLocation),
     Rand = get_id(A),
-    error_logger:info_report({?MODULE, "out lp addr, rand", ?LINE, Addr, Rand}),
+    P = self(),
+    error_logger:info_report({?MODULE, "out lp addr, rand", ?LINE, P, Addr, Rand}),
     Body = html_body(Addr, Addr_post, Rand),
     {content, "text/html", Body}.
 
@@ -54,20 +55,20 @@ html_body(Addr, Addr_post, Rand) ->
 
              async: true, /* If set to non-async, browser shows page as \"Loading..\"*/
              cache: false,
-             timeout:50000, /* Timeout in ms */
+             timeout:150, /* Timeout in ms */
 
              success: function(data){ /* called when request to lp_endpoint.yaws completes */
                  addmsg(\"new\", data); /* Add response to a .msg div (with the \"new\" class)*/
                  setTimeout(
                      'waitForMsg(rand_id)', /* Request next message */
-                     100 /* ..after 1 seconds */
+                     10 /* ..after 1 seconds */
                  );
              },
              error: function(XMLHttpRequest, textStatus, errorThrown){
                  addmsg(\"error\", textStatus + \" (\" + errorThrown + \")\");
                  setTimeout(
                      'waitForMsg(rand_id)', /* Try again after.. */
-                     2000); /* milliseconds (15seconds) */
+                     20); /* milliseconds (15seconds) */
              },
          });
      };

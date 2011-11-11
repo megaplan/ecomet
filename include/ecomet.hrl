@@ -6,6 +6,7 @@
 -define(SETUP_CONSUMER_TIMEOUT, 10000). % milliseconds
 -define(IDLE_TIMEOUT, 300). % seconds
 -define(LP_REQUEST_TIMEOUT, 300). % seconds
+-define(YAWS_LP_REQUEST_TIMEOUT, 300). % seconds
 -define(QUEUE_MAX_DUR, 20000000). % microseconds
 -define(QUEUE_MAX_LEN, 100).
 -define(T, 1000).
@@ -42,6 +43,11 @@
     start={0,0,0} % time in now() format
 }).
 
+-record(yp, { % yaws process serving long poll
+    pid,
+    start={0,0,0} % time in now() format
+}).
+
 -record(chi, {
     pid,
     id,
@@ -53,8 +59,12 @@
 -record(csr, {
     ws_children = [], % web socket
     lp_children = [], % long poll
+    lp_yaws = [], % yaws processes serving long polling
     child_config = [],
     yaws_config = [],
+    % time to terminate yaws long poll processes
+    yaws_lp_request_timeout = ?YAWS_LP_REQUEST_TIMEOUT,
+
     log,
     conn, % #conn{}
     rses, % #rses{}

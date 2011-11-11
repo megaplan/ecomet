@@ -1,7 +1,9 @@
 <erl> % -*-Erlang-*-
 out(A) -> 
+    Me = self(),
+    ecomet_server:lp_pid(Me),
     Q = A#arg.querydata,
-    error_logger:info_report({?MODULE, "lp endpoint q", ?LINE, Q}),
+    error_logger:info_report({?MODULE, "lp endpoint q", ?LINE, Me, Q}),
     P = yaws_api:parse_query(A),
     error_logger:info_report({?MODULE, "lp endpoint p", ?LINE, P}),
     case lists:keysearch("rand_id", 1, P) of
