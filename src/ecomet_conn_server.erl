@@ -147,6 +147,7 @@ handle_cast(_N, St) ->
 terminate(_, #child{id=Id, conn=#conn{channel=Channel, consumer_tag = Tag}}
           = St) ->
     ecomet_rb:cancel_consumer(Channel, Tag),
+    ecomet_server:del_lp(self(), Id),
     mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id}, St#child.debug, run, 2),
     ok.
 
@@ -458,11 +459,12 @@ update_idle(St) ->
 %% @doc checks idle timer and casts stop to itself if it is more than
 %% configured limit
 %%
-check_idle(#child{idle_timeout=Idle, last_use=T} = St) ->
+check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T} = St) ->
     Now = now(),
     Delta = timer:now_diff(Now, T),
     if Delta > Idle * 1000000 ->
-            mpln_p_debug:pr({?MODULE, "stop on idle", ?LINE}, St#child.debug, run, 2),
+            mpln_p_debug:pr({?MODULE, "stop on idle", ?LINE, Id, Id_web},
+                            St#child.debug, run, 2),
             gen_server:cast(self(), stop);
        true -> 
             ok

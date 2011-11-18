@@ -6,7 +6,9 @@
 -define(SETUP_CONSUMER_TIMEOUT, 10000). % milliseconds
 -define(IDLE_TIMEOUT, 300). % seconds
 -define(LP_REQUEST_TIMEOUT, 300). % seconds
--define(YAWS_LP_REQUEST_TIMEOUT, 300). % seconds
+-define(LP_CHECK_INTERVAL, 1000). % milliseconds
+-define(LP_YAWS_CHECK_INTERVAL, 1000). % milliseconds
+-define(LP_YAWS_REQUEST_TIMEOUT, 300). % seconds
 -define(QUEUE_MAX_DUR, 20000000). % microseconds
 -define(QUEUE_MAX_LEN, 100).
 -define(T, 1000).
@@ -16,7 +18,7 @@
 
 % state of a websocket worker
 -record(child, {
-    id,
+    id, % ref
     id_r, % rand id for simulating no_local amqp consumer
     id_web, % rand id from long poll web page
     start_time = {0,0,0},
@@ -59,12 +61,16 @@
 -record(csr, {
     ws_children = [], % web socket
     lp_children = [], % long poll
+    lp_last_check,
+    lp_check_interval = ?LP_CHECK_INTERVAL,
+    lp_request_timeout = ?LP_REQUEST_TIMEOUT,
     lp_yaws = [], % yaws processes serving long polling
+    lp_yaws_last_check,
+    lp_yaws_check_interval = ?LP_YAWS_CHECK_INTERVAL,
+    % time to terminate yaws long poll processes
+    lp_yaws_request_timeout = ?LP_YAWS_REQUEST_TIMEOUT,
     child_config = [],
     yaws_config = [],
-    % time to terminate yaws long poll processes
-    yaws_lp_request_timeout = ?YAWS_LP_REQUEST_TIMEOUT,
-
     log,
     conn, % #conn{}
     rses, % #rses{}

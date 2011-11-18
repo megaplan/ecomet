@@ -42,6 +42,7 @@
 -export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
 -export([lp_get/3, lp_post/4, lp_pid/1]).
 -export([subscribe/4]).
+-export([del_lp/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -106,6 +107,10 @@ handle_cast(add_rabbit_inc_other_stat, St) ->
 handle_cast(add_rabbit_inc_own_stat, St) ->
     St_s = add_msg_stat(St, inc_own),
     New = do_smth(St_s),
+    {noreply, New, ?T};
+handle_cast({del_lp, Pid, Ref}, St) ->
+    St_p = del_lp_pid(St, Pid, Ref),
+    New = do_smth(St_p),
     {noreply, New, ?T};
 handle_cast({lp_pid, Pid}, St) ->
     St_p = add_lp_pid(St, Pid),
@@ -191,6 +196,16 @@ add_lp(Sock, Event, true, Id) ->
     gen_server:call(?MODULE, {add_lp, Sock, Event, true, Id});
 add_lp(Sock, Event, _, Id) ->
     gen_server:call(?MODULE, {add_lp, Sock, Event, false, Id}).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc deletes a long-polling child from a list of long-polling children
+%% @since 2011-11-18 18:00
+%%
+-spec del_lp(pid(), reference()) -> ok.
+
+del_lp(Pid, Ref) ->
+    gen_server:cast(?MODULE, {del_lp, Pid, Ref}).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -574,11 +589,40 @@ add_lp_pid(#csr{lp_yaws=L} = St, Pid) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc deletes a terminated long poll process from a list of children
+%%
+del_lp_pid(#csr{lp_children=L} = St, Pid, Ref) ->
+    L2 = [X || X <- L, X#chi.pid == Pid, X#chi.id == Ref],
+    St#csr{lp_children = L2}.
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc does periodic tasks: clean yaws long poll process, etc
 %%
 do_smth(St) ->
-    St_lp = clean_yaws_long_poll(St),
+    St_e = check_ecomet_long_poll(St),
+    St_lp = check_yaws_long_poll(St_e),
     St_lp.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc checks if there was enough time since last cleaning and calls
+%% clean_yaws_long_poll. This time check is performed to call cleaning
+%% not too frequently
+%%
+-spec check_yaws_long_poll(#csr{}) -> #csr{}.
+
+check_yaws_long_poll(#csr{lp_yaws_last_check=undefined} = St) ->
+    St#csr{lp_yaws_last_check=now()};
+check_yaws_long_poll(#csr{lp_yaws_last_check=Last, lp_yaws_check_interval=T}
+                     = St) ->
+    Now = now(),
+    Delta = timer:now_diff(Now, Last),
+    if Delta > T * 1000 ->
+            clean_yaws_long_poll(St#csr{lp_yaws_last_check=Now});
+       true ->
+            St
+    end.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -587,7 +631,9 @@ do_smth(St) ->
 %% @todo rewrite it to use legal Yaws API and not "fast and dirty hacks"
 %% @todo do it on timer (say once a second) and not always
 %%
-clean_yaws_long_poll(#csr{yaws_lp_request_timeout=Timeout, lp_yaws=L} = St) ->
+-spec clean_yaws_long_poll(#csr{}) -> #csr{}.
+
+clean_yaws_long_poll(#csr{lp_yaws_request_timeout=Timeout, lp_yaws=L} = St) ->
     Now = now(),
     F = fun(#yp{pid=Pid, start=T} = Ypid, Acc) ->
                 Delta = timer:now_diff(Now, T),
@@ -600,5 +646,39 @@ clean_yaws_long_poll(#csr{yaws_lp_request_timeout=Timeout, lp_yaws=L} = St) ->
         end,
     New_list = lists:foldl(F, [], L),
     St#csr{lp_yaws=New_list}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc checks if there was enough time since last cleaning and calls
+%% clean_ecomet_long_poll. This time check is performed to call cleaning
+%% not too frequently
+%%
+-spec check_ecomet_long_poll(#csr{}) -> #csr{}.
+
+check_ecomet_long_poll(#csr{lp_last_check=undefined} = St) ->
+    St#csr{lp_last_check=now()};
+check_ecomet_long_poll(#csr{lp_last_check=Last, lp_check_interval=T} = St) ->
+    Now = now(),
+    Delta = timer:now_diff(Now, Last),
+    if Delta > T * 1000 ->
+            clean_ecomet_long_poll(St#csr{lp_last_check=Now});
+       true ->
+            St
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc cleans away old long poll processes from the list. Just cleans
+%% the list, no any killing spree is involved here because processes terminate
+%% themselves
+%%
+clean_ecomet_long_poll(#csr{lp_request_timeout=Timeout, lp_children=L} = St) ->
+    Now = now(),
+    F = fun(#chi{start=T}) ->
+                Delta = timer:now_diff(Now, T),
+                Delta =< Timeout * 1000000
+        end,
+    New_list = lists:filter(F, L),
+    St#csr{lp_children=New_list}.
 
 %%-----------------------------------------------------------------------------
