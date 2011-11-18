@@ -592,7 +592,7 @@ add_lp_pid(#csr{lp_yaws=L} = St, Pid) ->
 %% @doc deletes a terminated long poll process from a list of children
 %%
 del_lp_pid(#csr{lp_children=L} = St, Pid, Ref) ->
-    L2 = [X || X <- L, X#chi.pid == Pid, X#chi.id == Ref],
+    L2 = [X || X <- L, (X#chi.pid =/= Pid) or (X#chi.id =/= Ref)],
     St#csr{lp_children = L2}.
 
 %%-----------------------------------------------------------------------------
