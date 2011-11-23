@@ -44,6 +44,8 @@
 -endif.
 
 -include("ecomet.hrl").
+-include("ecomet_child.hrl").
+-include("ecomet_server.hrl").
 -include("rabbit_session.hrl").
 
 %%%----------------------------------------------------------------------------
@@ -79,6 +81,9 @@ get_child_config(List) ->
         no_local = proplists:get_value(no_local, List, false),
         conn = proplists:get_value(conn, List, #rses{}),
         debug = proplists:get_value(debug, List, []),
+        sio_mgr = proplists:get_value(sio_mgr, List),
+        sio_hdl = proplists:get_value(sio_hdl, List),
+        sio_cli = proplists:get_value(sio_cli, List),
         event = make_event_bin(List),
         id = proplists:get_value(id, List)
     }.
@@ -92,7 +97,7 @@ get_child_config(List) ->
 make_event_bin(List) ->
     case proplists:get_value(event, List) of
         E when is_list(E) -> iolist_to_binary(E);
-        E when is_atom(E) -> atom_to_binary(E, latin1);
+%        E when is_atom(E) -> atom_to_binary(E, latin1);
         E                 -> E
     end.
 

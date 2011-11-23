@@ -43,12 +43,15 @@
 -export([lp_get/3, lp_post/4, lp_pid/1]).
 -export([subscribe/4]).
 -export([del_lp/2]).
+-export([add_sio/3, del_sio/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
 %%%----------------------------------------------------------------------------
 
 -include("ecomet.hrl").
+-include("ecomet_nums.hrl").
+-include("ecomet_server.hrl").
 -include("ecomet_stat.hrl").
 
 %%%----------------------------------------------------------------------------
@@ -88,6 +91,11 @@ handle_call({add_ws, Event, No_local}, _From, St) ->
     {Res, St_c} = add_ws_child(St, Event, No_local),
     New = do_smth(St_c),
     {reply, Res, New, ?T};
+handle_call({add_sio, Mgr, Handler, Client}, _From, St) ->
+    mpln_p_debug:pr({?MODULE, 'add_sio_child', ?LINE}, St#csr.debug, run, 2),
+    {Res, St_c} = add_sio_child(St, Mgr, Handler, Client),
+    New = do_smth(St_c),
+    {reply, Res, New, ?T};
 handle_call(status, _From, St) ->
     New = do_smth(St),
     {reply, St, New, ?T};
@@ -114,6 +122,10 @@ handle_cast({del_lp, Pid, Ref}, St) ->
     {noreply, New, ?T};
 handle_cast({lp_pid, Pid}, St) ->
     St_p = add_lp_pid(St, Pid),
+    New = do_smth(St_p),
+    {noreply, New, ?T};
+handle_cast({del_sio, Pid}, St) ->
+    St_p = del_sio_pid(St, Pid),
     New = do_smth(St_p),
     {noreply, New, ?T};
 handle_cast(_, St) ->
@@ -150,6 +162,28 @@ start_link() ->
 %%-----------------------------------------------------------------------------
 stop() ->
     gen_server:call(?MODULE, stop).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates a process that talks to socket-io child started somewhere else.
+%% 'no local' mode (amqp messages from the child should not return to this
+%% child).
+%% @since 2011-11-22 16:24
+%%
+-spec add_sio(pid(), atom(), pid()) -> ok.
+
+add_sio(Manager, Handler, Client) ->
+    gen_server:call(?MODULE, {add_sio, Manager, Handler, Client}).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc deletes a process that talks to socket-io child
+%% @since 2011-11-23 13:33
+%%
+-spec del_sio(pid()) -> ok.
+
+del_sio(Client) ->
+    gen_server:cast(?MODULE, {del_sio, Client}).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -288,44 +322,62 @@ do_start_child(Id, Pars) ->
 
 %%-----------------------------------------------------------------------------
 add_lp_child(St, Sock, Event, No_local, Id) ->
-    add_child(St, Sock, Event, No_local, 'lp', Id).
-    
+    Pars = [
+            {id_web, Id},
+            {lp_sock, Sock},
+            {event, Event},
+            {no_local, No_local},
+            {type, 'lp'}
+           ],
+    add_child(St, Pars).
+
 %%-----------------------------------------------------------------------------
 add_ws_child(St, Event, No_local) ->
-    add_child(St, undefined, Event, No_local, 'ws', undefined).
-    
+    Pars = [
+            {event, Event},
+            {no_local, No_local},
+            {type, 'ws'}
+           ],
+    add_child(St, Pars).
+
+%%-----------------------------------------------------------------------------
+add_sio_child(St, Mgr, Handler, Client) ->
+    Pars = [
+            {sio_mgr, Mgr},
+            {sio_hdl, Handler},
+            {sio_cli, Client},
+            {no_local, true}, % FIXME: make it a var?
+            {type, 'sio'}
+           ],
+    add_child(St, Pars).
+
 %%-----------------------------------------------------------------------------
 %%
 %% @doc creates child, stores its pid in state, checks for error
 %% @todo decide about policy on error
 %%
--spec add_child(#csr{}, any(), any(), boolean(), 'ws' | 'lp',
-                undefined | non_neg_integer()) ->
+-spec add_child(#csr{}, list()) ->
                        {{ok, pid()}, #csr{}}
                            | {{ok, pid(), any()}, #csr{}}
                            | {{error, any()}, #csr{}}.
 
-add_child(St, Sock, Event, No_local, Type, Id_web) ->
+add_child(St, Ext_pars) ->
     Id = make_ref(),
-    Pars = [{id, Id},
-            {id_web, Id_web},
-            {event, Event},
-            {no_local, No_local},
-            {conn, St#csr.conn},
-            {lp_sock, Sock},
-            {type, Type}
+    Pars = Ext_pars ++ [{id, Id},
+            {conn, St#csr.conn}
             | St#csr.child_config],
     mpln_p_debug:pr({?MODULE, "start child prepared", ?LINE, Id, Pars},
                     St#csr.debug, child, 4),
     Res = do_start_child(Id, Pars),
     mpln_p_debug:pr({?MODULE, "start child result", ?LINE, Id, Pars, Res},
                     St#csr.debug, child, 4),
+    Type = proplists:get_value(type, Ext_pars),
     case Res of
         {ok, Pid} ->
-            New_st = add_child_list(St, Type, Pid, Id, Id_web),
+            New_st = add_child_list(St, Type, Pid, Id, Ext_pars),
             {Res, New_st};
         {ok, Pid, _Info} ->
-            New_st = add_child_list(St, Type, Pid, Id, Id_web),
+            New_st = add_child_list(St, Type, Pid, Id, Ext_pars),
             {Res, New_st};
         {error, Reason} ->
             mpln_p_debug:pr({?MODULE, "start child error", ?LINE, Reason},
@@ -495,14 +547,23 @@ charge_child(St, Pid) ->
 %% @doc adds child info into appropriate list - either web socket or long poll
 %% in dependence of given child type.
 %%
-add_child_list(St, Type, Pid, Id, Id_web) ->
-    Data = #chi{pid=Pid, id=Id, id_web=Id_web, start=now()},
-    add_child_list2(St, Type, Data).
+-spec add_child_list(#csr{}, 'ws' | 'lp' | 'sio', pid(), reference(),
+                     list()) -> #csr{}.
 
-add_child_list2(#csr{ws_children=C} = St, 'ws', Data) ->
+add_child_list(St, Type, Pid, Id, Pars) ->
+    Id_web = proplists:get_value(id_web, Pars),
+    Data = #chi{pid=Pid, id=Id, id_web=Id_web, start=now()},
+    add_child_list2(St, Type, Data, Pars).
+
+add_child_list2(#csr{ws_children=C} = St, 'ws', Data, _) ->
     St#csr{ws_children=[Data | C]};
-add_child_list2(#csr{lp_children=C} = St, 'lp', Data) ->
-    St#csr{lp_children=[Data | C]}.
+add_child_list2(#csr{lp_children=C} = St, 'lp', Data, _) ->
+    St#csr{lp_children=[Data | C]};
+add_child_list2(#csr{sio_children=C} = St, 'sio', Data, Pars) ->
+    Ev_mgr = proplists:get_value(sio_mgr, Pars),
+    Client = proplists:get_value(sio_cli, Pars),
+    New = Data#chi{sio_mgr=Ev_mgr, sio_cli=Client},
+    St#csr{sio_children=[New | C]}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -594,6 +655,31 @@ add_lp_pid(#csr{lp_yaws=L} = St, Pid) ->
 del_lp_pid(#csr{lp_children=L} = St, Pid, Ref) ->
     L2 = [X || X <- L, (X#chi.pid =/= Pid) or (X#chi.id =/= Ref)],
     St#csr{lp_children = L2}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc deletes and terminates socket-io related process from a list of children
+%%
+del_sio_pid(#csr{sio_children=L} = St, Pid) ->
+    F = fun(#chi{pid=C_pid}) ->
+                C_pid == Pid
+        end,
+    {Del, Cont} = lists:partition(F, L),
+    terminate_sio_children(St, Del),
+    St#csr{sio_children = Cont}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc terminates socket-io related process
+%%
+terminate_sio_children(St, List) ->
+    F = fun(#chi{pid=Pid}) ->
+                Info = process_info(Pid),
+                mpln_p_debug:pr({?MODULE, terminate_sio_children, ?LINE, Info},
+                                St#csr.debug, run, 5),
+                ecomet_conn_server:stop(Pid)
+        end,
+    lists:foreach(F, List).
 
 %%-----------------------------------------------------------------------------
 %%

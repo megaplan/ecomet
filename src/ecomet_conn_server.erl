@@ -46,7 +46,9 @@
 %%% Includes
 %%%----------------------------------------------------------------------------
 
+-include("ecomet_nums.hrl").
 -include("ecomet.hrl").
+-include("ecomet_child.hrl").
 -include("ecomet_stat.hrl").
 -include("rabbit_session.hrl").
 -include_lib("amqp_client.hrl").
@@ -259,8 +261,13 @@ prepare_stat(C) ->
     C#child{stat=St}.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc prepares rabbit-mq if event is defined
+%%
 -spec prepare_rabbit(#child{}) -> #child{}.
 
+prepare_rabbit(#child{event=undefined} = C) ->
+    C;
 prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     mpln_p_debug:pr({?MODULE, prepare_rabbit, ?LINE, C}, C#child.debug, run, 6),
     Consumer_tag = ecomet_rb:prepare_queue(Conn, Event, No_local),
