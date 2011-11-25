@@ -41,6 +41,7 @@
 -export([get_lp_data/2]).
 -export([post_lp_data/3]).
 -export([subscribe/4]).
+-export([data_from_sio/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -52,45 +53,6 @@
 -include("ecomet_stat.hrl").
 -include("rabbit_session.hrl").
 -include_lib("amqp_client.hrl").
-
-%%%----------------------------------------------------------------------------
-%%% API
-%%%----------------------------------------------------------------------------
-get_lp_data(Pid, From) ->
-    get_lp_data(Pid, From, infinity).
-
-get_lp_data(Pid, From, Timeout) ->
-    gen_server:call(Pid, {get_lp_data, From}, Timeout).
-
-%%-----------------------------------------------------------------------------
-post_lp_data(Pid, From, Data) ->
-    post_lp_data(Pid, From, Data, infinity).
-
-post_lp_data(Pid, From, Data, Timeout) ->
-    gen_server:call(Pid, {post_lp_data, From, Data}, Timeout).
-
-%%-----------------------------------------------------------------------------
-subscribe(Pid, From, Event, No_local) ->
-    subscribe(Pid, From, Event, No_local, infinity).
-
-subscribe(Pid, From, Event, No_local, Timeout) ->
-    gen_server:call(Pid, {subscribe, From, Event, No_local}, Timeout).
-
-%%-----------------------------------------------------------------------------
-start() ->
-    start_link().
-
-%%-----------------------------------------------------------------------------
-start_link() ->
-    start_link(none).
-
-%%-----------------------------------------------------------------------------
-start_link(Conf) ->
-    gen_server:start_link(?MODULE, Conf, []).
-
-%%-----------------------------------------------------------------------------
-stop(Pid) ->
-    gen_server:call(Pid, stop).
 
 %%%----------------------------------------------------------------------------
 %%% gen_server callbacks
@@ -140,34 +102,39 @@ handle_call(_N, _From, St) ->
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
     {stop, normal, St};
+handle_cast({data_from_sio, Data}, St) ->
+    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE}, St#child.debug, run, 2),
+    St_r = ecomet_conn_server_sio:process_sio(St, Data),
+    St_i = update_idle(St_r),
+    New = do_smth(St_i),
+    {noreply, New, ?T};
 handle_cast(_N, St) ->
     mpln_p_debug:pr({?MODULE, cast_other, ?LINE, _N}, St#child.debug, run, 2),
     New = do_smth(St),
     {noreply, New, ?T}.
 
 %%-----------------------------------------------------------------------------
-terminate(_, #child{id=Id, conn=#conn{channel=Channel, consumer_tag = Tag}}
-          = St) ->
-    ecomet_rb:cancel_consumer(Channel, Tag),
-    ecomet_server:del_lp(self(), Id),
+terminate(_, #child{id=Id, type=Type,
+                    conn=#conn{channel=Channel, consumer_tags = Tags}} = St) ->
+    [ecomet_rb:cancel_consumer(Channel, X) || X <- Tags],
+    ecomet_server:del_child(self(), Type, Id),
     mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id}, St#child.debug, run, 2),
     ok.
 
 %%-----------------------------------------------------------------------------
 %% @doc message from amqp
-handle_info({#'basic.deliver'{delivery_tag = Tag}, Content} = _Req,
+handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req,
             #child{id=Id} = St) ->
-    mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, _Req},
+    mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, Req},
                     St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),
-    St_r = send_rabbit_msg(St, Content),
+    St_r = send_rabbit_msg(St, Req),
     New = do_smth(St_r),
     {noreply, New, ?T};
 
-%% @doc amqp setup consumer confirmation
-handle_info(#'basic.consume_ok'{consumer_tag = Tag},
-            #child{id=Id,
-                   conn=#conn{consumer_tag = Tag, consumer=undefined}} = St) ->
+%% @doc amqp setup consumer confirmation. In fact, unnecessary for case
+%% of list of consumers
+handle_info(#'basic.consume_ok'{consumer_tag = Tag}, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Id, Tag},
                     St#child.debug, run, 2),
     New = do_smth(St#child{conn=(St#child.conn)#conn{consumer=ok}}),
@@ -219,6 +186,52 @@ handle_info(_N, #child{id=Id} = St) ->
 code_change(_Old_vsn, State, _Extra) ->
     {ok, State}.
 
+%%%----------------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------------
+data_from_sio(Pid, Data) ->
+    gen_server:cast(Pid, {data_from_sio, Data}).
+
+%%-----------------------------------------------------------------------------
+get_lp_data(Pid, From) ->
+    get_lp_data(Pid, From, infinity).
+
+get_lp_data(Pid, From, Timeout) ->
+    % FIXME: should be cast
+    gen_server:call(Pid, {get_lp_data, From}, Timeout).
+
+%%-----------------------------------------------------------------------------
+post_lp_data(Pid, From, Data) ->
+    post_lp_data(Pid, From, Data, infinity).
+
+post_lp_data(Pid, From, Data, Timeout) ->
+    % FIXME: should be cast
+    gen_server:call(Pid, {post_lp_data, From, Data}, Timeout).
+
+%%-----------------------------------------------------------------------------
+subscribe(Pid, From, Event, No_local) ->
+    subscribe(Pid, From, Event, No_local, infinity).
+
+subscribe(Pid, From, Event, No_local, Timeout) ->
+    % FIXME: should be cast
+    gen_server:call(Pid, {subscribe, From, Event, No_local}, Timeout).
+
+%%-----------------------------------------------------------------------------
+start() ->
+    start_link().
+
+%%-----------------------------------------------------------------------------
+start_link() ->
+    start_link(none).
+
+%%-----------------------------------------------------------------------------
+start_link(Conf) ->
+    gen_server:start_link(?MODULE, Conf, []).
+
+%%-----------------------------------------------------------------------------
+stop(Pid) ->
+    gen_server:call(Pid, stop).
+
 %%-----------------------------------------------------------------------------
 %% Internal functions
 %%-----------------------------------------------------------------------------
@@ -267,11 +280,13 @@ prepare_stat(C) ->
 -spec prepare_rabbit(#child{}) -> #child{}.
 
 prepare_rabbit(#child{event=undefined} = C) ->
+    % exchanges and queues will be created on web messages data
     C;
 prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     mpln_p_debug:pr({?MODULE, prepare_rabbit, ?LINE, C}, C#child.debug, run, 6),
     Consumer_tag = ecomet_rb:prepare_queue(Conn, Event, No_local),
-    C#child{conn=Conn#conn{consumer_tag=Consumer_tag}}.
+    New_conn = Conn#conn{consumer_tags=[Consumer_tag|Conn#conn.consumer_tags]},
+    C#child{conn=New_conn}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -301,10 +316,11 @@ prepare_id(St) ->
 %% from amqp to web client. Duplicates the message back to amqp.
 %% @since 2011-10-14 15:40
 %%
--spec send_rabbit_msg(#child{}, any()) -> #child{}.
+-spec send_rabbit_msg(#child{}, {#'basic.deliver'{}, any()}) -> #child{}.
 
-send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
-    mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Id, Content},
+send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St,
+                {Dinfo, Content} = Req) ->
+    mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Id, Req},
                     St#child.debug, rb_msg, 6),
     {Payload, Corr_msg} = ecomet_rb:get_content_data(Content),
     case ecomet_data:is_our_id(Base, Corr_msg) of
@@ -320,17 +336,20 @@ send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, Content) ->
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, stat,
                              ?LINE, Id, St_st},
                             St_st#child.debug, stat, 6),
-            proceed_send(St_st, Payload)
+            proceed_send(St_st, Dinfo, Payload)
     end.
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc proceeds sending the amqp message to websocket or stores it
+%% @doc proceeds sending the amqp message to socket-io, websocket or stores it
 %% in a queue for later fetching it by long polling
 %%
-proceed_send(#child{type=ws} = St, Content) ->
+proceed_send(#child{type=sio} = St, #'basic.deliver'{routing_key=Key},
+             Content) ->
+    ecomet_conn_server_sio:send(St, Key, Content);
+proceed_send(#child{type=ws} = St, _, Content) ->
     ecomet_handler_ws:send_to_ws(St, Content);
-proceed_send(#child{type=lp} = St, Content) ->
+proceed_send(#child{type=lp} = St, _, Content) ->
     St_p = store_msg(St, Content),
     St_p.
 
@@ -464,8 +483,10 @@ update_idle(St) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc checks idle timer and casts stop to itself if it is more than
-%% configured limit
+%% configured limit. Does not check socket-io processes.
 %%
+check_idle(#child{type='sio'}) ->
+    ok;
 check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T} = St) ->
     Now = now(),
     Delta = timer:now_diff(Now, T),
@@ -491,7 +512,7 @@ clean_clients(#child{lp_request_timeout=Timeout, clients=C} = St) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc subscribes itself itself to messages with the given routing key
+%% @doc subscribes itself to messages with the given routing key
 %%
 -spec do_subscribe(#child{}, any(), string() | binary(), boolean()) -> #child{}.
 

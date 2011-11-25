@@ -8,6 +8,7 @@
     'password' = <<"guest">>,
     'vhost' = <<"/">>,
     'exchange' = <<"negacom">>,
+    'exchange_base' = <<"ec_">>,
     'exchange_type' = <<"topic">>,
     'queue' = <<"ec_queue">>,
     'routing_key' = <<"test_topless">>
@@ -16,7 +17,7 @@
 -record(conn, {
     'channel' = false,
     'connection' = false,
-    'consumer_tag',
+    'consumer_tags' = [],
     'consumer',
     'exchange',
     'ticket'

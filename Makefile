@@ -1,6 +1,7 @@
 R14_DIR = $(HOME)/util/erlang/dist/r14b3/bin
 
 EXT_MOD = ../amqp_client
+EXT_MOD += ../socket.io-erlang
 EXT_MOD_INCLUDES = $(EXT_MOD:%=%/include)
 INCLUDE_DIR = include
 INCLUDE_DIR += $(EXT_MOD_INCLUDES)

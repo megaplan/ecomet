@@ -42,8 +42,8 @@
 -export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
 -export([lp_get/3, lp_post/4, lp_pid/1]).
 -export([subscribe/4]).
--export([del_lp/2]).
--export([add_sio/3, del_sio/1]).
+-export([del_child/3]).
+-export([add_sio/4, del_sio/1, sio_msg/3]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -53,6 +53,7 @@
 -include("ecomet_nums.hrl").
 -include("ecomet_server.hrl").
 -include("ecomet_stat.hrl").
+-include("rabbit_session.hrl").
 
 %%%----------------------------------------------------------------------------
 %%% gen_server callbacks
@@ -91,9 +92,9 @@ handle_call({add_ws, Event, No_local}, _From, St) ->
     {Res, St_c} = add_ws_child(St, Event, No_local),
     New = do_smth(St_c),
     {reply, Res, New, ?T};
-handle_call({add_sio, Mgr, Handler, Client}, _From, St) ->
+handle_call({add_sio, Mgr, Handler, Client, Sid}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_sio_child', ?LINE}, St#csr.debug, run, 2),
-    {Res, St_c} = add_sio_child(St, Mgr, Handler, Client),
+    {Res, St_c} = add_sio_child(St, Mgr, Handler, Client, Sid),
     New = do_smth(St_c),
     {reply, Res, New, ?T};
 handle_call(status, _From, St) ->
@@ -116,12 +117,16 @@ handle_cast(add_rabbit_inc_own_stat, St) ->
     St_s = add_msg_stat(St, inc_own),
     New = do_smth(St_s),
     {noreply, New, ?T};
-handle_cast({del_lp, Pid, Ref}, St) ->
-    St_p = del_lp_pid(St, Pid, Ref),
+handle_cast({del_child, Pid, Type, Ref}, St) ->
+    St_p = del_child_pid(St, Pid, Type, Ref),
     New = do_smth(St_p),
     {noreply, New, ?T};
 handle_cast({lp_pid, Pid}, St) ->
     St_p = add_lp_pid(St, Pid),
+    New = do_smth(St_p),
+    {noreply, New, ?T};
+handle_cast({sio_msg, Pid, Sid, Data}, St) ->
+    St_p = process_sio_msg(St, Pid, Sid, Data),
     New = do_smth(St_p),
     {noreply, New, ?T};
 handle_cast({del_sio, Pid}, St) ->
@@ -170,10 +175,20 @@ stop() ->
 %% child).
 %% @since 2011-11-22 16:24
 %%
--spec add_sio(pid(), atom(), pid()) -> ok.
+-spec add_sio(pid(), atom(), pid(), any()) -> ok.
 
-add_sio(Manager, Handler, Client) ->
-    gen_server:call(?MODULE, {add_sio, Manager, Handler, Client}).
+add_sio(Manager, Handler, Client, Sid) ->
+    gen_server:call(?MODULE, {add_sio, Manager, Handler, Client, Sid}).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc sends data from socket-io child to connection handler
+%% @since 2011-11-23 14:45
+%%
+-spec sio_msg(pid(), any(), any()) -> ok.
+
+sio_msg(Client, Sid, Data) ->
+    gen_server:cast(?MODULE, {sio_msg, Client, Sid, Data}).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -233,13 +248,13 @@ add_lp(Sock, Event, _, Id) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc deletes a long-polling child from a list of long-polling children
+%% @doc deletes a child from an appropriate list of children
 %% @since 2011-11-18 18:00
 %%
--spec del_lp(pid(), reference()) -> ok.
+-spec del_child(pid(), 'ws'|'lp'|'sio', reference()) -> ok.
 
-del_lp(Pid, Ref) ->
-    gen_server:cast(?MODULE, {del_lp, Pid, Ref}).
+del_child(Pid, Type, Ref) ->
+    gen_server:cast(?MODULE, {del_child, Pid, Type, Ref}).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -341,11 +356,12 @@ add_ws_child(St, Event, No_local) ->
     add_child(St, Pars).
 
 %%-----------------------------------------------------------------------------
-add_sio_child(St, Mgr, Handler, Client) ->
+add_sio_child(St, Mgr, Handler, Client, Sid) ->
     Pars = [
             {sio_mgr, Mgr},
             {sio_hdl, Handler},
             {sio_cli, Client},
+            {sio_sid, Sid},
             {no_local, true}, % FIXME: make it a var?
             {type, 'sio'}
            ],
@@ -364,8 +380,9 @@ add_sio_child(St, Mgr, Handler, Client) ->
 add_child(St, Ext_pars) ->
     Id = make_ref(),
     Pars = Ext_pars ++ [{id, Id},
-            {conn, St#csr.conn}
-            | St#csr.child_config],
+                        {conn, St#csr.conn},
+                        {exchange_base, (St#csr.rses)#rses.exchange_base}
+                        | St#csr.child_config],
     mpln_p_debug:pr({?MODULE, "start child prepared", ?LINE, Id, Pars},
                     St#csr.debug, child, 4),
     Res = do_start_child(Id, Pars),
@@ -489,7 +506,9 @@ ensure_child(#csr{ws_children=Ch} = St, 'ws', Id) ->
             {error, no_websocket_child}
     end;
 ensure_child(St, 'lp', Id) ->
-    check_lp_child(St, undefined, undefined, undefined, Id).
+    check_lp_child(St, undefined, undefined, undefined, Id);
+ensure_child(St, 'sio', Pid) ->
+    check_sio_child(St, Pid).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -562,7 +581,8 @@ add_child_list2(#csr{lp_children=C} = St, 'lp', Data, _) ->
 add_child_list2(#csr{sio_children=C} = St, 'sio', Data, Pars) ->
     Ev_mgr = proplists:get_value(sio_mgr, Pars),
     Client = proplists:get_value(sio_cli, Pars),
-    New = Data#chi{sio_mgr=Ev_mgr, sio_cli=Client},
+    Sid = proplists:get_value(sio_sid, Pars),
+    New = Data#chi{sio_mgr=Ev_mgr, sio_cli=Client, sio_sid=Sid},
     St#csr{sio_children=[New | C]}.
 
 %%-----------------------------------------------------------------------------
@@ -661,10 +681,14 @@ del_lp_pid(#csr{lp_children=L} = St, Pid, Ref) ->
 %% @doc deletes and terminates socket-io related process from a list of children
 %%
 del_sio_pid(#csr{sio_children=L} = St, Pid) ->
-    F = fun(#chi{pid=C_pid}) ->
+    mpln_p_debug:pr({?MODULE, del_sio_pid, ?LINE, Pid},
+                    St#csr.debug, run, 4),
+    F = fun(#chi{sio_cli=C_pid}) ->
                 C_pid == Pid
         end,
     {Del, Cont} = lists:partition(F, L),
+    mpln_p_debug:pr({?MODULE, del_sio_pid, ?LINE, Del, Cont},
+                    St#csr.debug, run, 5),
     terminate_sio_children(St, Del),
     St#csr{sio_children = Cont}.
 
@@ -766,5 +790,67 @@ clean_ecomet_long_poll(#csr{lp_request_timeout=Timeout, lp_children=L} = St) ->
         end,
     New_list = lists:filter(F, L),
     St#csr{lp_children=New_list}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates a handler process if it's not done yet, charges the process
+%% to do the work
+%%
+process_sio_msg(St, _Client, Sid, Data) ->
+    case check_sio_child(St, Sid) of
+        {{ok, Pid}, St_c} ->
+            ecomet_conn_server:data_from_sio(Pid, Data),
+            St_c;
+        {{ok, Pid, _}, St_c} ->
+            ecomet_conn_server:data_from_sio(Pid, Data),
+            St_c;
+        {{error, _Reason}, _St_c} ->
+            St
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc checks whether the socket-io child with given id is alive. Creates
+%% the one if it's not.
+%%
+-spec check_sio_child(#csr{}, any()) ->
+                            {{ok, pid()}, #csr{}}
+                                | {{ok, pid(), any()}, #csr{}}
+                                | {{error, any()}, #csr{}}.
+
+check_sio_child(#csr{sio_children = Ch} = St, Sid) ->
+    case is_sio_child_alive(St, Ch, Sid) of
+        {true, I} ->
+            {{ok, I#chi.pid}, St};
+        {false, _} ->
+            add_sio_child(St, undefined, undefined, undefined, Sid)
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc finds socket-io child with given client id and checks whether it's
+%% alive
+%%
+is_sio_child_alive(St, List, Id) ->
+    mpln_p_debug:pr({?MODULE, "is_sio_child_alive", ?LINE, List, Id},
+                    St#csr.debug, run, 4),
+    L2 = [X || X <- List, X#chi.sio_sid == Id],
+    mpln_p_debug:pr({?MODULE, "is_sio_child_alive", ?LINE, L2, Id},
+                    St#csr.debug, run, 4),
+    case L2 of
+        [I | _] ->
+            {is_process_alive(I#chi.pid), I};
+        _ ->
+            {false, undefined}
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc deletes a child from a list of children
+%%
+del_child_pid(St, Pid, 'lp', Ref) ->
+    del_lp_pid(St, Pid, Ref);
+del_child_pid(St, Pid, 'sio', _Ref) ->
+    del_sio_pid(St, Pid).
 
 %%-----------------------------------------------------------------------------

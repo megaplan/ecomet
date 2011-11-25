@@ -60,6 +60,7 @@ stuff_rabbit_with(List) ->
         'vhost' = proplists:get_value(vhost, R, <<"/">>),
         'exchange' = proplists:get_value(exchange, R, <<"negacom">>),
         'exchange_type' = proplists:get_value(exchange_type, R, <<"topic">>),
+        'exchange_base' = proplists:get_value(exchange_base, R, <<"eco_">>),
         'queue' = proplists:get_value(queue, R, <<"ec_queue_3">>),
         'routing_key' = proplists:get_value(routing_key, R, <<"test_event">>)
     }

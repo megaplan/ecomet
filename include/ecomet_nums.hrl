@@ -4,6 +4,8 @@
 -define(OWN_ID_LEN, 8).
 -define(MSG_ID_LEN, 8).
 
+-define(HTTP_CONNECT_TIMEOUT, 15000). % milliseconds
+-define(HTTP_TIMEOUT, 60000). % milliseconds
 -define(SETUP_CONSUMER_TIMEOUT, 10000). % milliseconds
 -define(IDLE_TIMEOUT, 300). % seconds
 -define(LP_REQUEST_TIMEOUT, 300). % seconds

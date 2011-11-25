@@ -17,6 +17,7 @@
     id_web,
     sio_mgr,
     sio_cli,
+    sio_sid,
     start={0,0,0} % time in now() format
 }).
 

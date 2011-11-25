@@ -73,6 +73,9 @@ get_child_config(List) ->
         lp_request_timeout = proplists:get_value(lp_request_timeout, List,
                                                  ?LP_REQUEST_TIMEOUT),
         idle_timeout = proplists:get_value(idle_timeout, List, ?IDLE_TIMEOUT),
+        http_connect_timeout = proplists:get_value(http_connect_timeout,
+                                                   List, ?IDLE_TIMEOUT),
+        http_timeout = proplists:get_value(http_timeout, List, ?IDLE_TIMEOUT),
         qmax_dur = proplists:get_value(qmax_dur, List, ?QUEUE_MAX_DUR),
         qmax_len = proplists:get_value(qmax_len, List, ?QUEUE_MAX_LEN),
         id_web = proplists:get_value(id_web, List),
@@ -84,6 +87,8 @@ get_child_config(List) ->
         sio_mgr = proplists:get_value(sio_mgr, List),
         sio_hdl = proplists:get_value(sio_hdl, List),
         sio_cli = proplists:get_value(sio_cli, List),
+        sio_sid = proplists:get_value(sio_sid, List),
+        exchange_base = proplists:get_value(exchange_base, List, <<>>),
         event = make_event_bin(List),
         id = proplists:get_value(id, List)
     }.
