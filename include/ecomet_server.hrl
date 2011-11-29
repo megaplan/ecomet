@@ -18,6 +18,7 @@
     lp_yaws_request_timeout = ?LP_YAWS_REQUEST_TIMEOUT,
     child_config = [],
     yaws_config = [],
+    socketio_config = [],
     log,
     conn, % #conn{}
     rses, % #rses{}

@@ -175,7 +175,9 @@ stop() ->
 %% child).
 %% @since 2011-11-22 16:24
 %%
--spec add_sio(pid(), atom(), pid(), any()) -> ok.
+-spec add_sio(pid(), atom(), pid(), any()) -> {ok, pid()}
+                                              | {ok, pid(), any()}
+                                              | {error, any()}.
 
 add_sio(Manager, Handler, Client, Sid) ->
     gen_server:call(?MODULE, {add_sio, Manager, Handler, Client, Sid}).
@@ -419,6 +421,28 @@ start_yaws(C) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc 
+%%
+start_socketio(#csr{socketio_config=S} = C) ->
+    Res = do_start_socketio(C, proplists:get_value(port, S)),
+    mpln_p_debug:pr({?MODULE, socketio_start, ?LINE, Res},
+                    C#csr.debug, run, 1),
+    Res.
+
+%%-----------------------------------------------------------------------------
+do_start_socketio(_C, undefined) ->
+    {error, port_undefined};
+do_start_socketio(_C, Port) ->
+    Mod = 'ecomet_socketio_handler',
+    [application:start(X) || X <- [misultin, socketio]], % FIXME
+    {ok, Pid} = socketio_listener:start([{http_port, Port},
+                                         {default_http_handler, Mod}]),
+    EventMgr = socketio_listener:event_manager(Pid),
+    ok = gen_event:add_handler(EventMgr, Mod, []),
+    {ok, {EventMgr, Pid, self()}}.
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc prepare log if it is defined in config
 %% @since 2011-10-14 14:14
 %%
@@ -440,6 +464,7 @@ prepare_all(C) ->
     Cst = prepare_stat(C),
     New = prepare_rabbit(Cst),
     start_yaws(C),
+    start_socketio(C),
     New.
 
 %%-----------------------------------------------------------------------------

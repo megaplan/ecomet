@@ -126,14 +126,8 @@ proceed_type_msg(#child{conn=Conn, sio_cli=Client, no_local=No_local} = St,
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, Exchange, Client, Data},
                     St#child.debug, run, 5),
     Routes = ecomet_data_msg:get_routes(Data),
-    F = fun(Event, Acconn) ->
-                ecomet_rb:prepare_queue_conn(Acconn, Exchange, Event, No_local)
-        end,
-    New_conn = lists:foldl(F, Conn, Routes),
-    Text = lists:flatten(io_lib:format("ecomet_conn_server, ~p, ~p",
-                                       [Client, self()])),
-    send(St, <<"ok">>, Text),
-    St#child{conn=New_conn};
+    New = ecomet_rb:prepare_queue_bind_many(Conn, Exchange, Routes, No_local),
+    St#child{conn = New};
 proceed_type_msg(St, _Exch, _Other, _Data) ->
     mpln_p_debug:pr({?MODULE, 'proceed_type_msg other', ?LINE, _Exch, _Other},
                     St#child.debug, run, 2),

@@ -43,11 +43,11 @@
 -export([start/1]).
 -export([teardown/1, teardown_conn/1, send_message/4, send_message/5]).
 -export([send_ack/2]).
--export([prepare_queue/3]).
--export([prepare_queue_conn/4]).
 -export([get_content_data/1]).
--export([cancel_consumer/2]).
 -export([create_exchange/3]).
+-export([teardown_tags/1]).
+-export([prepare_queue_bind_many/3, prepare_queue_bind_many/4]).
+-export([prepare_queue_bind_one/3]).
 
 %%%----------------------------------------------------------------------------
 %%% API
@@ -103,6 +103,8 @@ start(Rses) ->
         ticket=Ticket}.
 
 %%-----------------------------------------------------------------------------
+-spec create_exchange(#conn{}, binary(), binary()) -> any().
+
 create_exchange(#conn{channel=Channel, ticket=Ticket}, Exchange, Type) ->
     ExchangeDeclare = #'exchange.declare'{ticket = Ticket,
         exchange = Exchange, type= Type,
@@ -113,21 +115,33 @@ create_exchange(#conn{channel=Channel, ticket=Ticket}, Exchange, Type) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc cancels stored consumers
+%% @since 2011-11-29 13:28
+%%
+-spec teardown_tags(#conn{}) -> any().
+
+teardown_tags(#conn{channel = Channel, consumer_tags = Tags}) ->
+    [cancel_consumer(Channel, X) || {_Q, X} <- Tags].
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc cancels consumers, closes channel, closes connection
 %% @since 2011-10-25 13:30
 %%
-teardown(#conn{connection = Connection,
-        channel = Channel,
-        consumer_tags = Tags}) ->
-    [cancel_consumer(Channel, X) || X <- Tags],
+-spec teardown(#conn{}) -> ok.
+
+teardown(#conn{connection = Connection, channel = Channel} = Conn) ->
+    teardown_tags(Conn),
     amqp_channel:close(Channel),
-    amqp_connection:close(Connection)
-.
+    amqp_connection:close(Connection).
+
 %%-----------------------------------------------------------------------------
 %%
 %% @doc cancels consumer, closes channel, closes connection
 %% @since 2011-10-25 13:30
 %%
+-spec teardown_conn(#conn{}) -> ok.
+
 teardown_conn(#conn{connection = Connection, channel = Channel}) ->
     amqp_channel:close(Channel),
     amqp_connection:close(Connection).
@@ -169,55 +183,38 @@ send_message(Channel, X, RoutingKey, Payload, Id) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates queue, binds it to routing key, returns a conn record
-%% with the new consumer tag added
-%% @since 2011-11-25 13:08
+%% @doc creates a queue, binds it to many routing keys, returns
+%% conn record with queue and consumer tags added
+%% @since 2011-11-29 14:10
 %%
--spec prepare_queue_conn(#conn{}, binary(), binary(), boolean()) -> #conn{}.
+-spec prepare_queue_bind_many(#conn{}, binary(), [binary()], boolean()) ->
+                                     #conn{}.
 
-prepare_queue_conn(#conn{consumer_tags=List} = Conn, Exchange, Key, No_local) ->
-    Tag = prepare_queue(Conn#conn{exchange=Exchange}, Key, No_local),
-    Conn#conn{consumer_tags = [Tag | List], exchange = Exchange}.
+prepare_queue_bind_many(Conn, Exchange, Keys, No_local) ->
+    prepare_queue_bind_many(Conn#conn{exchange=Exchange}, Keys, No_local).
+
+-spec prepare_queue_bind_many(#conn{}, [binary()], boolean()) -> #conn{}.
+
+prepare_queue_bind_many(#conn{channel=Channel, consumer_tags=Tags} = Conn,
+                        Keys, No_local) ->
+    Queue = create_queue(Conn),
+    F = fun(K) ->
+                bind_queue(Conn, Queue, K)
+        end,
+    lists:foreach(F, Keys),
+    Tag = setup_consumer(Channel, Queue, No_local),
+    Conn#conn{consumer_tags = [{Queue, Tag} | Tags]}.
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates queue, binds it to routing key
-%% @since 2011-10-25 14:40
+%% @doc creates a queue, binds it to a routing key, returns
+%% conn record with queue and consumer tag added
+%% @since 2011-11-29 14:10
 %%
--spec prepare_queue(#conn{}, binary(), boolean()) -> binary().
+-spec prepare_queue_bind_one(#conn{}, binary(), boolean()) -> #conn{}.
 
-prepare_queue(#conn{channel=Channel, exchange=X, ticket=Ticket},
-              Bind_key, No_local) ->
-
-    QueueDeclare = #'queue.declare'{ticket = Ticket,
-        passive = false, durable = true,
-        exclusive = true, auto_delete = true,
-        nowait = false, arguments = []},
-    #'queue.declare_ok'{queue = Q} = amqp_channel:call(Channel, QueueDeclare),
-
-    QueueBind = #'queue.bind'{ticket = Ticket,
-        exchange = X,
-        queue = Q,
-        routing_key = Bind_key,
-        nowait = false, arguments = []},
-    #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBind),
-
-    setup_consumer(Channel, Q, No_local).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc cancels consumer
-%% @since 2011-10-25 13:30
-%%
-cancel_consumer(_Channel, undefined) ->
-    ok;
-cancel_consumer(Channel, ConsumerTag) ->
-    % After the consumer is finished interacting with the queue,
-    % it can deregister itself
-    BasicCancel = #'basic.cancel'{consumer_tag = ConsumerTag,
-        nowait = false},
-    #'basic.cancel_ok'{consumer_tag = ConsumerTag} =
-        amqp_channel:call(Channel,BasicCancel).
+prepare_queue_bind_one(Conn, Key, No_local) ->
+    prepare_queue_bind_many(Conn, [Key], No_local).
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions
@@ -263,5 +260,49 @@ make_prop_id(Id) ->
 
 get_prop_id(Props) ->
     Props#'P_basic'.correlation_id.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates queue, binds it to routing key
+%% @since 2011-10-25 14:40
+%%
+-spec create_queue(#conn{}) -> binary().
+
+create_queue(#conn{channel=Channel, ticket=Ticket}) ->
+
+    QueueDeclare = #'queue.declare'{ticket = Ticket,
+        passive = false, durable = true,
+        exclusive = true, auto_delete = false,
+        nowait = false, arguments = []},
+    #'queue.declare_ok'{queue = Q} = amqp_channel:call(Channel, QueueDeclare),
+    Q.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc bind queue to the binding key
+%%
+bind_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Queue,
+              Bind_key) ->
+    QueueBind = #'queue.bind'{ticket = Ticket,
+        exchange = X,
+        queue = Queue,
+        routing_key = Bind_key,
+        nowait = false, arguments = []},
+    #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBind).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc cancels consumer
+%% @since 2011-10-25 13:30
+%%
+cancel_consumer(_Channel, undefined) ->
+    ok;
+cancel_consumer(Channel, ConsumerTag) ->
+    % After the consumer is finished interacting with the queue,
+    % it can deregister itself
+    BasicCancel = #'basic.cancel'{consumer_tag = ConsumerTag,
+        nowait = false},
+    #'basic.cancel_ok'{consumer_tag = ConsumerTag} =
+        amqp_channel:call(Channel,BasicCancel).
 
 %%-----------------------------------------------------------------------------

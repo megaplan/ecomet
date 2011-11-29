@@ -114,9 +114,8 @@ handle_cast(_N, St) ->
     {noreply, New, ?T}.
 
 %%-----------------------------------------------------------------------------
-terminate(_, #child{id=Id, type=Type,
-                    conn=#conn{channel=Channel, consumer_tags = Tags}} = St) ->
-    [ecomet_rb:cancel_consumer(Channel, X) || X <- Tags],
+terminate(_, #child{id=Id, type=Type, conn=Conn} = St) ->
+    ecomet_rb:teardown_tags(Conn),
     ecomet_server:del_child(self(), Type, Id),
     mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id}, St#child.debug, run, 2),
     ok.
@@ -284,8 +283,9 @@ prepare_rabbit(#child{event=undefined} = C) ->
     C;
 prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     mpln_p_debug:pr({?MODULE, prepare_rabbit, ?LINE, C}, C#child.debug, run, 6),
-    Consumer_tag = ecomet_rb:prepare_queue(Conn, Event, No_local),
-    New_conn = Conn#conn{consumer_tags=[Consumer_tag|Conn#conn.consumer_tags]},
+    New_conn = ecomet_rb:prepare_queue_bind_one(Conn, Event, No_local),
+    mpln_p_debug:pr({?MODULE, prepare_rabbit_queue, ?LINE, New_conn},
+                    C#child.debug, run, 3),
     C#child{conn=New_conn}.
 
 %%-----------------------------------------------------------------------------
