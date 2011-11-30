@@ -41,6 +41,7 @@
 -export([get_group/1]).
 -export([get_auth_url/1, get_auth_cookie/1, get_account/1, get_user_id/1]).
 -export([get_routes/1]).
+-export([get_message/1, get_users/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Public API
@@ -175,6 +176,26 @@ get_routes(Data) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc extracts message
+%% @since 2011-11-30 15:43
+%%
+-spec get_message(any()) -> any().
+
+get_message(Data) ->
+    get_value(Data, <<"message">>).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc extracts list of allowed users
+%% @since 2011-11-30 15:43
+%%
+-spec get_users(any()) -> any().
+
+get_users(Data) ->
+    get_value(Data, <<"allowedUsers">>).
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc Extracts value for auth cookie
 %% @since 2011-11-24 13:11
 %%
@@ -246,7 +267,12 @@ get_auth_password(Data) ->
 %% @doc Extracts value for tagged item
 %%
 get_value({struct, List}, Tag) when is_list(List) ->
-    proplists:get_value(Tag, List);
+    case proplists:get_value(Tag, List) of
+        {struct, Data} when is_list(Data) ->
+            Data;
+        Other ->
+            Other
+        end;
 get_value(List, Tag) when is_list(List) ->
     proplists:get_value(Tag, List);
 get_value(_Data, _Tag) ->

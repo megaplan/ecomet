@@ -73,15 +73,41 @@ process_sio(St, #msg{content=Data}) ->
 %%
 -spec send(#child{}, binary(), binary() | string()) -> #child{}.
 
-send(#child{sio_cli=Client} = St, Key, Content) ->
-    Data = [{<<"event">>, Key}, {<<"message">>, Content}],
-    Msg = #msg{json=true, content=Data},
-    socketio_client:send(Client, Msg),
-    St.
+send(#child{id=Id, id_q=User, sio_cli=Client} = St, Key, Body) ->
+    Content = get_json_body(Body),
+    mpln_p_debug:pr({?MODULE, 'send', ?LINE, Id, Key, Body, Content},
+                    St#child.debug, run, 4),
+    Users = ecomet_data_msg:get_users(Content),
+    Message = ecomet_data_msg:get_message(Content),
+    case is_user_allowed(User, Users) of
+        true ->
+            mpln_p_debug:pr({?MODULE, 'send', ?LINE, allowed, Id, Message},
+                            St#child.debug, run, 4),
+            Data = [{<<"event">>, Key}, {<<"message">>, Message}],
+            % encoding hack here is necessary, because current socket-io
+            % backend (namely, misultin) crashes on encoding utf8
+            Json = mochijson2:encode(Data),
+            Json_b = iolist_to_binary(Json),
+            Json_s = binary_to_list(Json_b),
+            mpln_p_debug:pr({?MODULE, 'send', ?LINE, json, Id, Data,
+                             Json, Json_b, Json_s}, St#child.debug, run, 4),
+            Msg = #msg{json=false, content=Json_s},
+            socketio_client:send(Client, Msg),
+            St;
+        false ->
+            St
+    end.
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
+%%
+%% @doc checks if current user is in user list
+%%
+is_user_allowed(User, Users) ->
+    lists:member(User, Users).
+
+%%-----------------------------------------------------------------------------
 %%
 %% @doc makes request to auth server. Returns http answer.
 %%

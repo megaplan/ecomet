@@ -115,9 +115,11 @@ handle_cast(_N, St) ->
 
 %%-----------------------------------------------------------------------------
 terminate(_, #child{id=Id, type=Type, conn=Conn} = St) ->
-    ecomet_rb:teardown_tags(Conn),
+    Res_t = ecomet_rb:teardown_tags(Conn),
+    Res_q = ecomet_rb:teardown_queues(Conn),
     ecomet_server:del_child(self(), Type, Id),
-    mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id}, St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id, Res_t, Res_q},
+                    St#child.debug, run, 2),
     ok.
 
 %%-----------------------------------------------------------------------------

@@ -45,7 +45,7 @@
 -export([send_ack/2]).
 -export([get_content_data/1]).
 -export([create_exchange/3]).
--export([teardown_tags/1]).
+-export([teardown_tags/1, teardown_queues/1]).
 -export([prepare_queue_bind_many/3, prepare_queue_bind_many/4]).
 -export([prepare_queue_bind_one/3]).
 
@@ -122,6 +122,24 @@ create_exchange(#conn{channel=Channel, ticket=Ticket}, Exchange, Type) ->
 
 teardown_tags(#conn{channel = Channel, consumer_tags = Tags}) ->
     [cancel_consumer(Channel, X) || {_Q, X} <- Tags].
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc cancels all the queues stored in #conn{}
+%% @since 2011-11-30 12:03
+%%
+-spec teardown_queues(#conn{}) -> any().
+
+teardown_queues(#conn{channel=Channel, consumer_tags=Tags, ticket=Ticket}) ->
+    F = fun({Q, _}) ->
+                D = #'queue.delete'{ticket = Ticket,
+                                    queue = Q,
+                                    if_unused = false,
+                                    if_empty = false,
+                                    nowait = false},
+                #'queue.delete_ok'{} = amqp_channel:call(Channel, D)
+        end,
+    lists:map(F, Tags).
 
 %%-----------------------------------------------------------------------------
 %%
