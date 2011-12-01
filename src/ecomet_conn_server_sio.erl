@@ -52,6 +52,7 @@
 %%%----------------------------------------------------------------------------
 %%
 %% @doc processes data received from socket-io
+%% @since 2011-11-24 12:40
 %%
 -spec process_sio(#child{}, #msg{}) -> #child{}.
 
@@ -70,9 +71,12 @@ process_sio(St, #msg{content=Data}) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc sends content and routing key to socket-io client
+%% @since 2011-11-24 12:40
 %%
 -spec send(#child{}, binary(), binary() | string()) -> #child{}.
 
+send(#child{id_q=undefined} = St, _Key, _Body) ->
+    St;
 send(#child{id=Id, id_q=User, sio_cli=Client} = St, Key, Body) ->
     Content = get_json_body(Body),
     mpln_p_debug:pr({?MODULE, 'send', ?LINE, Id, Key, Body, Content},
@@ -85,7 +89,7 @@ send(#child{id=Id, id_q=User, sio_cli=Client} = St, Key, Body) ->
                             St#child.debug, run, 4),
             Data = [{<<"event">>, Key}, {<<"message">>, Message}],
             % encoding hack here is necessary, because current socket-io
-            % backend (namely, misultin) crashes on encoding utf8
+            % backend (namely, misultin) crashes on encoding cyrillic utf8
             Json = mochijson2:encode(Data),
             Json_b = iolist_to_binary(Json),
             Json_s = binary_to_list(Json_b),
@@ -102,8 +106,13 @@ send(#child{id=Id, id_q=User, sio_cli=Client} = St, Key, Body) ->
 %%% Internal functions
 %%%----------------------------------------------------------------------------
 %%
-%% @doc checks if current user is in user list
+%% @doc checks if current user is in user list. Empty or undefined list of
+%% users means "allow".
 %%
+is_user_allowed(_User, []) ->
+    true;
+is_user_allowed(_User, undefined) ->
+    true;
 is_user_allowed(User, Users) ->
     lists:member(User, Users).
 
@@ -113,16 +122,18 @@ is_user_allowed(User, Users) ->
 %%
 -spec do_auth(#child{}, list()) -> {ok, any()} | {error, any()}.
 
-do_auth(#child{http_connect_timeout=Conn_t, http_timeout=Http_t} = St, Info) ->
+do_auth(#child{id=Id, http_connect_timeout=Conn_t, http_timeout=Http_t} = St,
+        Info) ->
     Url = ecomet_data_msg:get_auth_url(Info),
     Cookie = ecomet_data_msg:get_auth_cookie(Info),
     Hdr = make_header(Cookie),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
-    mpln_p_debug:pr({?MODULE, 'do_auth', ?LINE, Req}, St#child.debug, run, 4),
+    mpln_p_debug:pr({?MODULE, 'do_auth', ?LINE, Id, Req},
+        St#child.debug, run, 4),
     Res = http:request(post, Req,
         [{timeout, Http_t}, {connect_timeout, Conn_t}],
         []),
-    mpln_p_debug:pr({?MODULE, 'do_auth res', ?LINE, Res},
+    mpln_p_debug:pr({?MODULE, 'do_auth res', ?LINE, Id, Res},
                     St#child.debug, run, 5),
     Res.
 
@@ -183,9 +194,13 @@ process_auth_resp(_, _) ->
 %% exchange
 %%
 proceed_process_auth_resp(St, Body) ->
-    Data = get_json_body(Body),
-    X = create_exchange(St, Data),
-    {ecomet_data_msg:get_user_id(Data), X}.
+    case get_json_body(Body) of
+        undefined ->
+            {undefined, <<>>};
+        Data ->
+            X = create_exchange(St, Data),
+            {ecomet_data_msg:get_user_id(Data), X}
+    end.
 
 %%-----------------------------------------------------------------------------
 %%
