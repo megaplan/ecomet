@@ -79,8 +79,8 @@ send(#child{id_q=undefined} = St, _Key, _Body) ->
     St;
 send(#child{id=Id, id_q=User, sio_cli=Client} = St, Key, Body) ->
     Content = get_json_body(Body),
-    mpln_p_debug:pr({?MODULE, 'send', ?LINE, Id, Key, Body, Content},
-                    St#child.debug, run, 4),
+    mpln_p_debug:pr({?MODULE, 'send', ?LINE, Id, User, Client,
+                    Key, Body, Content}, St#child.debug, run, 4),
     Users = ecomet_data_msg:get_users(Content),
     Message = ecomet_data_msg:get_message(Content),
     case is_user_allowed(User, Users) of
@@ -130,7 +130,7 @@ do_auth(#child{id=Id, http_connect_timeout=Conn_t, http_timeout=Http_t} = St,
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
     mpln_p_debug:pr({?MODULE, 'do_auth', ?LINE, Id, Req},
         St#child.debug, run, 4),
-    Res = http:request(post, Req,
+    Res = httpc:request(post, Req,
         [{timeout, Http_t}, {connect_timeout, Conn_t}],
         []),
     mpln_p_debug:pr({?MODULE, 'do_auth res', ?LINE, Id, Res},
@@ -199,7 +199,11 @@ proceed_process_auth_resp(St, Body) ->
             {undefined, <<>>};
         Data ->
             X = create_exchange(St, Data),
-            {ecomet_data_msg:get_user_id(Data), X}
+            Uid = ecomet_data_msg:get_user_id(Data),
+            % uid can be either integer or string in data. So we make
+            % it string for later check for allowed users
+            Uid_str = mpln_misc_web:make_string(Uid),
+            {Uid_str, X}
     end.
 
 %%-----------------------------------------------------------------------------

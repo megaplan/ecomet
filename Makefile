@@ -1,4 +1,4 @@
-R14_DIR = $(HOME)/util/erlang/dist/r14b3/bin
+#R14_DIR = $(HOME)/util/erlang/dist/r14b4/bin
 
 EXT_MOD = ../amqp_client
 EXT_MOD += ../socket.io-erlang
@@ -18,7 +18,7 @@ INCLUDES = $(INCLUDE_DIR:%=-I%)
 SRC_DIR = src
 EBIN_DIR := ebin
 ERLC_OPTS = +debug_info -DTEST $(DUP_TEST) $(PROPER_OPTS) -pa $(PROPER_BIN)
-ERLC := $(R14_DIR)/erlc $(ERLC_OPTS)
+ERLC := erlc $(ERLC_OPTS)
 
 all: $(EBIN_DIR)
 	$(ERLC) -W $(INCLUDES) -o $(EBIN_DIR) $(SRC_DIR)/*.erl
@@ -39,7 +39,6 @@ $(EBIN_DIR) :
 	( test -d $(EBIN_DIR) || mkdir -p $(EBIN_DIR) )
 
 dia:
-	PATH=$(R14_DIR):$(PATH) \
 	dialyzer \
 		$(INCLUDES) \
 		--src \
