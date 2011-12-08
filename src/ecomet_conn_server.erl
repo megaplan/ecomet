@@ -24,7 +24,7 @@
 %%% @author arkdro <arkdro@gmail.com>
 %%% @since 2011-10-14 15:40
 %%% @license MIT
-%%% @doc server that handles one websocket connection: sends/receives
+%%% @doc server that handles one comet/websocket connection: sends/receives
 %%% data from/to client and amqp server
 %%%
 
@@ -89,11 +89,14 @@ handle_call({get_lp_data, Client}, _From, #child{clients=C} = St) ->
     St_i = update_idle(St_r),
     New = do_smth(St_i),
     {reply, ok, New, ?T};
+
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
+
 handle_call(status, _From, St) ->
     New = do_smth(St),
     {reply, St, New, ?T};
+
 handle_call(_N, _From, St) ->
     mpln_p_debug:pr({?MODULE, call_other, ?LINE, _N}, St#child.debug, run, 2),
     New = do_smth(St),
@@ -102,12 +105,14 @@ handle_call(_N, _From, St) ->
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
     {stop, normal, St};
+
 handle_cast({data_from_sio, Data}, St) ->
     mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE}, St#child.debug, run, 2),
     St_r = ecomet_conn_server_sio:process_sio(St, Data),
     St_i = update_idle(St_r),
     New = do_smth(St_i),
     {noreply, New, ?T};
+
 handle_cast(_N, St) ->
     mpln_p_debug:pr({?MODULE, cast_other, ?LINE, _N}, St#child.debug, run, 2),
     New = do_smth(St),

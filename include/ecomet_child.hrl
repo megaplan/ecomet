@@ -8,7 +8,7 @@
     id, % ref
     id_r, % rand id for simulating no_local amqp consumer
     id_web, % rand id from long poll web page
-    id_q, % user id to match messages from amqp (used in socket-io part)
+    id_s, % user id to match messages from amqp (used in socket-io part)
     start_time = {0,0,0},
     last_use = {0,0,0},
     idle_timeout = ?IDLE_TIMEOUT,
@@ -27,6 +27,7 @@
     debug,
     conn, % #conn{}
     exchange_base,
+    routes = [], % routing keys
     no_local = false, % for amqp consumer setup
     type :: 'ws' | 'lp' | 'sio', % web socket, long polling, socket-io
     http_connect_timeout = ?HTTP_CONNECT_TIMEOUT,

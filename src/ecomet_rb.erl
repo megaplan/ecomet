@@ -48,6 +48,7 @@
 -export([teardown_tags/1, teardown_queues/1]).
 -export([prepare_queue_bind_many/3, prepare_queue_bind_many/4]).
 -export([prepare_queue_bind_one/3]).
+-export([prepare_queue_rebind/5]).
 
 %%%----------------------------------------------------------------------------
 %%% API
@@ -233,6 +234,25 @@ prepare_queue_bind_many(#conn{channel=Channel, consumer_tags=Tags} = Conn,
 
 prepare_queue_bind_one(Conn, Key, No_local) ->
     prepare_queue_bind_many(Conn, [Key], No_local).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates a queue, binds it to a routing keys, removes old bindings,
+%% returns conn record with keys, queue and consumer tag updated
+%% @since 2011-12-08 18:48
+%%
+-spec prepare_queue_rebind(#conn{}, binary(), [binary()], [binary()],
+                           boolean()) -> #conn{}.
+
+prepare_queue_rebind(Conn, Exchange, Old_keys, New_keys, No_local) ->
+    All_keys = New_keys ++ Old_keys,
+    New = prepare_queue_bind_many(Conn#conn{
+                                    exchange=Exchange, consumer_tags=[]},
+                                  All_keys, No_local),
+    % here is the tiny moment when incoming amqp messages can duplicate
+    teardown_tags(Conn),
+    teardown_queues(Conn),
+    New.
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions

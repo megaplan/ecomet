@@ -56,16 +56,18 @@
 %%
 -spec process_sio(#child{}, #msg{}) -> #child{}.
 
-process_sio(St, #msg{content=Data}) ->
-    Auth = ecomet_data_msg:get_auth_info(Data),
-    Res_auth = do_auth(St, Auth),
-    case Res_auth of
-        {ok, Info} ->
-            {Uid, Exch} = process_auth_resp(St, Info),
+process_sio(#child{id=Id, id_s=Uid} = St, #msg{content=Data}) ->
+    case ecomet_data_msg:get_auth_info(Data) of
+        undefined when Uid == undefined ->
+            mpln_p_debug:pr({?MODULE, 'process_sio', ?LINE, 'no auth data', Id},
+                            St#child.debug, run, 4),
+            St;
+        undefined ->
             Type = ecomet_data_msg:get_type(Data),
-            proceed_type_msg(St#child{id_q=Uid}, Exch, Type, Data);
-        {error, _Reason} ->
-            St
+            proceed_type_msg(St, use_current_exchange, Type, Data);
+        Auth ->
+            Res_auth = send_auth_req(St, Auth),
+            proceed_auth_msg(St, Res_auth, Data)
     end.
 
 %%-----------------------------------------------------------------------------
@@ -75,9 +77,9 @@ process_sio(St, #msg{content=Data}) ->
 %%
 -spec send(#child{}, binary(), binary() | string()) -> #child{}.
 
-send(#child{id_q=undefined} = St, _Key, _Body) ->
+send(#child{id_s=undefined} = St, _Key, _Body) ->
     St;
-send(#child{id=Id, id_q=User, sio_cli=Client} = St, Key, Body) ->
+send(#child{id=Id, id_s=User, sio_cli=Client} = St, Key, Body) ->
     Content = get_json_body(Body),
     mpln_p_debug:pr({?MODULE, 'send', ?LINE, Id, User, Client,
                     Key, Body, Content}, St#child.debug, run, 4),
@@ -120,20 +122,20 @@ is_user_allowed(User, Users) ->
 %%
 %% @doc makes request to auth server. Returns http answer.
 %%
--spec do_auth(#child{}, list()) -> {ok, any()} | {error, any()}.
+-spec send_auth_req(#child{}, list()) -> {ok, any()} | {error, any()}.
 
-do_auth(#child{id=Id, http_connect_timeout=Conn_t, http_timeout=Http_t} = St,
-        Info) ->
+send_auth_req(#child{id=Id, http_connect_timeout=Conn_t, http_timeout=Http_t}
+              = St, Info) ->
     Url = ecomet_data_msg:get_auth_url(Info),
     Cookie = ecomet_data_msg:get_auth_cookie(Info),
     Hdr = make_header(Cookie),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
-    mpln_p_debug:pr({?MODULE, 'do_auth', ?LINE, Id, Req},
+    mpln_p_debug:pr({?MODULE, 'send_auth_req', ?LINE, Id, Req},
         St#child.debug, run, 4),
     Res = httpc:request(post, Req,
         [{timeout, Http_t}, {connect_timeout, Conn_t}],
         []),
-    mpln_p_debug:pr({?MODULE, 'do_auth res', ?LINE, Id, Res},
+    mpln_p_debug:pr({?MODULE, 'send_auth_req res', ?LINE, Id, Res},
                     St#child.debug, run, 5),
     Res.
 
@@ -150,24 +152,46 @@ make_req(Url, Hdr) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc checks auth data received from auth server
+%%
+proceed_auth_msg(St, {ok, Info}, Data) ->
+    {Uid, Exch} = process_auth_resp(St, Info),
+    Type = ecomet_data_msg:get_type(Data),
+    proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data);
+
+proceed_auth_msg(St, {error, _Reason}, _Data) ->
+    St#child{id_s = undefined}.
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc prepares queues and bindings
 %%
--spec proceed_type_msg(#child{}, binary(), binary(), any()) -> #child{}.
+-spec proceed_type_msg(#child{}, use_current_exchange | binary(), binary(),
+                       any()) -> #child{}.
 
-proceed_type_msg(#child{id=Id, id_q=undefined} = St, _, _, _) ->
-    mpln_p_debug:pr({?MODULE, "proceed_type_msg undefined id_q", ?LINE,
-                     Id}, St#child.debug, run, 4),
+proceed_type_msg(#child{id=Id, id_s=undefined} = St, _, _, _) ->
+    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, 'undefined id_s', Id},
+                    St#child.debug, run, 4),
     St;
-proceed_type_msg(#child{conn=Conn, sio_cli=Client, no_local=No_local} = St,
-                 Exchange, <<"subscribe">>, Data) ->
-    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, Exchange, Client, Data},
-                    St#child.debug, run, 5),
+
+proceed_type_msg(#child{id=Id, conn=Conn, sio_cli=Client, no_local=No_local,
+                        routes=Old_routes} = St, Exchange, <<"subscribe">>,
+                 Data) ->
+    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, subscribe, Id,
+                     Exchange, Client, Data}, St#child.debug, run, 5),
     Routes = ecomet_data_msg:get_routes(Data),
-    New = ecomet_rb:prepare_queue_bind_many(Conn, Exchange, Routes, No_local),
+    New = case Exchange of
+              use_current_exchange ->
+                  ecomet_rb:prepare_queue_bind_many(Conn, Routes, No_local);
+              _ ->
+                  ecomet_rb:prepare_queue_rebind(Conn, Exchange,
+                                                 Old_routes, Routes, No_local)
+          end,
     St#child{conn = New};
-proceed_type_msg(St, _Exch, _Other, _Data) ->
-    mpln_p_debug:pr({?MODULE, 'proceed_type_msg other', ?LINE, _Exch, _Other},
-                    St#child.debug, run, 2),
+
+proceed_type_msg(#child{id=Id} = St, _Exch, _Other, _Data) ->
+    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, other, Id,
+                     _Exch, _Other}, St#child.debug, run, 2),
     St.
 
 %%-----------------------------------------------------------------------------
