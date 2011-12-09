@@ -46,9 +46,10 @@
 -export([get_content_data/1]).
 -export([create_exchange/3]).
 -export([teardown_tags/1, teardown_queues/1]).
--export([prepare_queue_bind_many/3, prepare_queue_bind_many/4]).
+%-export([prepare_queue_bind_many/3, prepare_queue_bind_many/4]).
 -export([prepare_queue_bind_one/3]).
 -export([prepare_queue_rebind/5]).
+-export([prepare_queue_add_bind/3]).
 
 %%%----------------------------------------------------------------------------
 %%% API
@@ -206,22 +207,17 @@ send_message(Channel, X, RoutingKey, Payload, Id) ->
 %% conn record with queue and consumer tags added
 %% @since 2011-11-29 14:10
 %%
--spec prepare_queue_bind_many(#conn{}, binary(), [binary()], boolean()) ->
-                                     #conn{}.
-
-prepare_queue_bind_many(Conn, Exchange, Keys, No_local) ->
-    prepare_queue_bind_many(Conn#conn{exchange=Exchange}, Keys, No_local).
 
 -spec prepare_queue_bind_many(#conn{}, [binary()], boolean()) -> #conn{}.
 
 prepare_queue_bind_many(#conn{channel=Channel, consumer_tags=Tags} = Conn,
                         Keys, No_local) ->
     Queue = create_queue(Conn),
+    Tag = setup_consumer(Channel, Queue, No_local),
     F = fun(K) ->
                 bind_queue(Conn, Queue, K)
         end,
     lists:foreach(F, Keys),
-    Tag = setup_consumer(Channel, Queue, No_local),
     Conn#conn{consumer_tags = [{Queue, Tag} | Tags]}.
 
 %%-----------------------------------------------------------------------------
@@ -229,6 +225,10 @@ prepare_queue_bind_many(#conn{channel=Channel, consumer_tags=Tags} = Conn,
 %% @doc creates a queue, binds it to a routing key, returns
 %% conn record with queue and consumer tag added
 %% @since 2011-11-29 14:10
+%% @todo get rid of it. Or at least don't export it.
+%% It is only used in ecomet_conn_server:prepare_rabbit,
+%% which is unnecessary, because all the preparations (create queue, etc)
+%% are done upon message arriving
 %%
 -spec prepare_queue_bind_one(#conn{}, binary(), boolean()) -> #conn{}.
 
@@ -237,19 +237,40 @@ prepare_queue_bind_one(Conn, Key, No_local) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates a queue, binds it to a routing keys, removes old bindings,
+%% @doc adds bindings for existing queue to the current exchange
+%% @since 2011-12-09 15:02
+%%
+-spec prepare_queue_add_bind(#conn{}, [binary()], boolean()) -> #conn{}.
+
+prepare_queue_add_bind(Conn, Keys, No_local) ->
+    prepare_queue_rebind(Conn, Conn#conn.exchange, [], Keys, No_local).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates a queue, binds it to a routing keys, removes old bindings
+%% (only if the exchange is changed),
 %% returns conn record with keys, queue and consumer tag updated
 %% @since 2011-12-08 18:48
 %%
 -spec prepare_queue_rebind(#conn{}, binary(), [binary()], [binary()],
                            boolean()) -> #conn{}.
 
+%% @doc same exchanges - adds bindings (tags must be filled)
+prepare_queue_rebind(#conn{exchange=Exchange, consumer_tags=[Head|_]} = Conn,
+                     Exchange, _Old_keys, New_keys, _No_local) ->
+    {Queue, _Tag} = Head,
+    F = fun(K) ->
+                bind_queue(Conn, Queue, K)
+        end,
+    lists:foreach(F, New_keys),
+    Conn;
+
+%% @doc different exchanges - creates new+old bindings, removes old bindings
 prepare_queue_rebind(Conn, Exchange, Old_keys, New_keys, No_local) ->
-    All_keys = New_keys ++ Old_keys,
     New = prepare_queue_bind_many(Conn#conn{
                                     exchange=Exchange, consumer_tags=[]},
-                                  All_keys, No_local),
-    % here is the tiny moment when incoming amqp messages can duplicate
+                                  New_keys ++ Old_keys, No_local),
+    % here is the teeny tiny moment when incoming amqp messages can duplicate
     teardown_tags(Conn),
     teardown_queues(Conn),
     New.

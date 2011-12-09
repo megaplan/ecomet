@@ -303,7 +303,8 @@ do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max} = State) ->
     check_idle(State),
     Qnew = clean_queue(Q, Dur, Max),
     St_c = clean_clients(State#child{queue=Qnew}),
-    St_sent = send_queued_msg(St_c),
+    St_a = check_auth(St_c),
+    St_sent = send_queued_msg(St_a),
     mpln_p_debug:pr({?MODULE, do_smth, ?LINE, Id, St_sent},
                     St_sent#child.debug, run, 7),
     St_sent.
@@ -501,8 +502,21 @@ check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T} = St) ->
             mpln_p_debug:pr({?MODULE, "stop on idle", ?LINE, Id, Id_web},
                             St#child.debug, run, 2),
             gen_server:cast(self(), stop);
-       true -> 
+       true ->
             ok
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc performs auth check if the configured time limit is up
+%%
+check_auth(#child{sio_last_auth=Last, sio_auth_recheck=Interval} = St) ->
+    Now = now(),
+    Delta = timer:now_diff(Now, Last),
+    if Delta > Interval * 1000000 ->
+            ecomet_conn_server_sio:recheck_auth(St);
+       true ->
+            St
     end.
 
 %%-----------------------------------------------------------------------------

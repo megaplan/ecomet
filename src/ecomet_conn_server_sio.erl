@@ -35,6 +35,7 @@
 
 -export([process_sio/2]).
 -export([send/3]).
+-export([recheck_auth/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -51,7 +52,18 @@
 %%% API
 %%%----------------------------------------------------------------------------
 %%
-%% @doc processes data received from socket-io
+%% @doc does recheck auth
+%%
+-spec recheck_auth(#child{}) -> #child{}.
+
+recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie} = St) ->
+    Res_auth = proceed_http_auth_req(St, Url, Cookie),
+    proceed_auth_msg(St, Res_auth, [{<<"type">>, <<"subscribe">>}]).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc processes data received from socket-io, stores auth data if presents
+%% for later checks
 %% @since 2011-11-24 12:40
 %%
 -spec process_sio(#child{}, #msg{}) -> #child{}.
@@ -66,8 +78,9 @@ process_sio(#child{id=Id, id_s=Uid} = St, #msg{content=Data}) ->
             Type = ecomet_data_msg:get_type(Data),
             proceed_type_msg(St, use_current_exchange, Type, Data);
         Auth ->
-            Res_auth = send_auth_req(St, Auth),
-            proceed_auth_msg(St, Res_auth, Data)
+            {Res_auth, Url, Cookie} = send_auth_req(St, Auth),
+            proceed_auth_msg(St#child{sio_auth_url=Url,
+                                      sio_auth_cookie=Cookie}, Res_auth, Data)
     end.
 
 %%-----------------------------------------------------------------------------
@@ -96,7 +109,7 @@ send(#child{id=Id, id_s=User, sio_cli=Client} = St, Key, Body) ->
             Json_b = iolist_to_binary(Json),
             Json_s = binary_to_list(Json_b),
             mpln_p_debug:pr({?MODULE, 'send', ?LINE, json, Id, Data,
-                             Json, Json_b, Json_s}, St#child.debug, run, 4),
+                             Json, Json_b, Json_s}, St#child.debug, run, 5),
             Msg = #msg{json=false, content=Json_s},
             socketio_client:send(Client, Msg),
             St;
@@ -120,24 +133,33 @@ is_user_allowed(User, Users) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc makes request to auth server. Returns http answer.
+%% @doc makes request to auth server. Returns http answer, auth url, auth cookie
 %%
--spec send_auth_req(#child{}, list()) -> {ok, any()} | {error, any()}.
+-spec send_auth_req(#child{}, list()) -> {{ok, any()} | {error, any()},
+                                          binary(), binary()}.
 
-send_auth_req(#child{id=Id, http_connect_timeout=Conn_t, http_timeout=Http_t}
+send_auth_req(#child{id=Id}
               = St, Info) ->
     Url = ecomet_data_msg:get_auth_url(Info),
     Cookie = ecomet_data_msg:get_auth_cookie(Info),
-    Hdr = make_header(Cookie),
-    Req = make_req(mpln_misc_web:make_string(Url), Hdr),
-    mpln_p_debug:pr({?MODULE, 'send_auth_req', ?LINE, Id, Req},
-        St#child.debug, run, 4),
-    Res = httpc:request(post, Req,
-        [{timeout, Http_t}, {connect_timeout, Conn_t}],
-        []),
+    Res = proceed_http_auth_req(St, Url, Cookie),
     mpln_p_debug:pr({?MODULE, 'send_auth_req res', ?LINE, Id, Res},
                     St#child.debug, run, 5),
-    Res.
+    {Res, Url, Cookie}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc creates http request, sends it to a server, returns response
+%%
+proceed_http_auth_req(#child{id=Id, http_connect_timeout=Conn_t,
+                             http_timeout=Http_t} = St, Url, Cookie) ->
+    Hdr = make_header(Cookie),
+    Req = make_req(mpln_misc_web:make_string(Url), Hdr),
+    mpln_p_debug:pr({?MODULE, 'proceed_http_auth_req', ?LINE, Id, Req},
+                    St#child.debug, run, 4),
+    httpc:request(post, Req,
+                  [{timeout, Http_t}, {connect_timeout, Conn_t}],
+                  []).
 
 %%-----------------------------------------------------------------------------
 make_header(Cookie) ->
@@ -157,10 +179,10 @@ make_req(Url, Hdr) ->
 proceed_auth_msg(St, {ok, Info}, Data) ->
     {Uid, Exch} = process_auth_resp(St, Info),
     Type = ecomet_data_msg:get_type(Data),
-    proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data);
+    proceed_type_msg(St#child{id_s=Uid, sio_last_auth=now()}, Exch, Type, Data);
 
 proceed_auth_msg(St, {error, _Reason}, _Data) ->
-    St#child{id_s = undefined}.
+    St#child{id_s = undefined, sio_last_auth=now()}. % is last necessary here?
 
 %%-----------------------------------------------------------------------------
 %%
@@ -182,7 +204,7 @@ proceed_type_msg(#child{id=Id, conn=Conn, sio_cli=Client, no_local=No_local,
     Routes = ecomet_data_msg:get_routes(Data),
     New = case Exchange of
               use_current_exchange ->
-                  ecomet_rb:prepare_queue_bind_many(Conn, Routes, No_local);
+                  ecomet_rb:prepare_queue_add_bind(Conn, Routes, No_local);
               _ ->
                   ecomet_rb:prepare_queue_rebind(Conn, Exchange,
                                                  Old_routes, Routes, No_local)
@@ -224,10 +246,11 @@ proceed_process_auth_resp(St, Body) ->
         Data ->
             X = create_exchange(St, Data),
             Uid = ecomet_data_msg:get_user_id(Data),
-            % uid can be either integer or string in data. So we make
-            % it string for later check for allowed users
-            Uid_str = mpln_misc_web:make_string(Uid),
-            {Uid_str, X}
+            % uids MUST come as strings in data, so json decoder would
+            % return them as binaries. So we make the current user id
+            % a binary for later check for allowed users
+            Uid_bin = mpln_misc_web:make_binary(Uid),
+            {Uid_bin, X}
     end.
 
 %%-----------------------------------------------------------------------------
