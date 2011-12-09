@@ -40,7 +40,7 @@
 -export([get_auth_keys/1]).
 -export([get_group/1]).
 -export([get_auth_url/1, get_auth_cookie/1, get_account/1, get_user_id/1]).
--export([get_routes/1]).
+-export([get_routes/1, get_routes/2]).
 -export([get_message/1, get_users/1]).
 
 %%%----------------------------------------------------------------------------
@@ -173,6 +173,16 @@ get_user_id(Data) ->
 
 get_routes(Data) ->
     get_value(Data, <<"routes">>).
+
+-spec get_routes(any(), T | list()) -> T | list().
+
+get_routes(Data, Default) ->
+    case get_routes(Data) of
+        Res when is_list(Res) ->
+            Res;
+        _ ->
+            Default
+    end.
 
 %%-----------------------------------------------------------------------------
 %%

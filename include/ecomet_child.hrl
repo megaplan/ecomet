@@ -19,7 +19,7 @@
     sio_hdl, % socket-io handler (module, in fact)
     sio_cli, % socket-io client
     sio_sid, % socket-io session id
-    sio_last_auth = {0,0,0},
+    sio_auth_last = {0,0,0},
     sio_auth_recheck = ?SIO_AUTH_RECHECK_INTERVAL,
     sio_auth_url,
     sio_auth_cookie,

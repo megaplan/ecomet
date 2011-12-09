@@ -510,7 +510,7 @@ check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T} = St) ->
 %%
 %% @doc performs auth check if the configured time limit is up
 %%
-check_auth(#child{sio_last_auth=Last, sio_auth_recheck=Interval} = St) ->
+check_auth(#child{sio_auth_last=Last, sio_auth_recheck=Interval} = St) ->
     Now = now(),
     Delta = timer:now_diff(Now, Last),
     if Delta > Interval * 1000000 ->

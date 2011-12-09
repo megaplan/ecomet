@@ -58,7 +58,7 @@
 
 recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie} = St) ->
     Res_auth = proceed_http_auth_req(St, Url, Cookie),
-    proceed_auth_msg(St, Res_auth, [{<<"type">>, <<"subscribe">>}]).
+    proceed_auth_msg(St, Res_auth, [{<<"type">>, 'reauth'}]).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -179,16 +179,17 @@ make_req(Url, Hdr) ->
 proceed_auth_msg(St, {ok, Info}, Data) ->
     {Uid, Exch} = process_auth_resp(St, Info),
     Type = ecomet_data_msg:get_type(Data),
-    proceed_type_msg(St#child{id_s=Uid, sio_last_auth=now()}, Exch, Type, Data);
+    proceed_type_msg(St#child{id_s=Uid, sio_auth_last=now()}, Exch, Type, Data);
 
 proceed_auth_msg(St, {error, _Reason}, _Data) ->
-    St#child{id_s = undefined, sio_last_auth=now()}. % is last necessary here?
+    St#child{id_s = undefined, sio_auth_last=now()}. % is last necessary here?
 
 %%-----------------------------------------------------------------------------
 %%
 %% @doc prepares queues and bindings
 %%
--spec proceed_type_msg(#child{}, use_current_exchange | binary(), binary(),
+-spec proceed_type_msg(#child{}, use_current_exchange | binary(),
+                       reauth | binary(),
                        any()) -> #child{}.
 
 proceed_type_msg(#child{id=Id, id_s=undefined} = St, _, _, _) ->
@@ -197,11 +198,19 @@ proceed_type_msg(#child{id=Id, id_s=undefined} = St, _, _, _) ->
     St;
 
 proceed_type_msg(#child{id=Id, conn=Conn, sio_cli=Client, no_local=No_local,
+                        routes=Routes} = St, Exchange, 'reauth', _Data) ->
+    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, reauth, Id, Exchange,
+                     Client, Routes}, St#child.debug, run, 5),
+    New = ecomet_rb:prepare_queue_rebind(Conn, Exchange, Routes, [], No_local),
+    St#child{conn = New};
+
+proceed_type_msg(#child{id=Id, conn=Conn, sio_cli=Client, no_local=No_local,
                         routes=Old_routes} = St, Exchange, <<"subscribe">>,
                  Data) ->
+    Routes = ecomet_data_msg:get_routes(Data, []),
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, subscribe, Id,
-                     Exchange, Client, Data}, St#child.debug, run, 5),
-    Routes = ecomet_data_msg:get_routes(Data),
+                     Exchange, Client, Old_routes, Routes, Data},
+                    St#child.debug, run, 5),
     New = case Exchange of
               use_current_exchange ->
                   ecomet_rb:prepare_queue_add_bind(Conn, Routes, No_local);
@@ -209,7 +218,7 @@ proceed_type_msg(#child{id=Id, conn=Conn, sio_cli=Client, no_local=No_local,
                   ecomet_rb:prepare_queue_rebind(Conn, Exchange,
                                                  Old_routes, Routes, No_local)
           end,
-    St#child{conn = New};
+    St#child{conn = New, routes = Routes ++ Old_routes};
 
 proceed_type_msg(#child{id=Id} = St, _Exch, _Other, _Data) ->
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, other, Id,
