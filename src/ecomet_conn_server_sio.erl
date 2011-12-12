@@ -58,7 +58,8 @@
 
 recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie} = St) ->
     Res_auth = proceed_http_auth_req(St, Url, Cookie),
-    proceed_auth_msg(St, Res_auth, [{<<"type">>, 'reauth'}]).
+    proceed_auth_msg(St#child{sio_auth_last=now()}, Res_auth,
+                     [{<<"type">>, 'reauth'}]).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -179,10 +180,12 @@ make_req(Url, Hdr) ->
 proceed_auth_msg(St, {ok, Info}, Data) ->
     {Uid, Exch} = process_auth_resp(St, Info),
     Type = ecomet_data_msg:get_type(Data),
-    proceed_type_msg(St#child{id_s=Uid, sio_auth_last=now()}, Exch, Type, Data);
+    proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data);
 
-proceed_auth_msg(St, {error, _Reason}, _Data) ->
-    St#child{id_s = undefined, sio_auth_last=now()}. % is last necessary here?
+proceed_auth_msg(#child{id=Id} = St, {error, _Reason}, _Data) ->
+    mpln_p_debug:pr({?MODULE, proceed_auth_msg, ?LINE, error, Id},
+                    St#child.debug, run, 3),
+    St#child{id_s = undefined}.
 
 %%-----------------------------------------------------------------------------
 %%
