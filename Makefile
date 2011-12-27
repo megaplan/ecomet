@@ -10,7 +10,7 @@ INCLUDE_DIR += $(EXT_MOD_INCLUDES)
 INCLUDE_DIR += ..
 INCLUDE_DIR += ../proper/include
 PROPER_BIN = ../proper/ebin
-PROPER_OPTS = -DPROPER
+#PROPER_OPTS = -DPROPER
 
 #DUP_TEST = -DDUP_TEST
 
@@ -22,8 +22,8 @@ ERLC := erlc $(ERLC_OPTS)
 
 all: $(EBIN_DIR)
 	$(ERLC) -W $(INCLUDES) -o $(EBIN_DIR) $(SRC_DIR)/*.erl
-	cp $(SRC_DIR)/ecomet_server.app $(EBIN_DIR)
-	
+	cp $(SRC_DIR)/ecomet.app $(EBIN_DIR)
+
 clean:
 	@rm -rvf $(EBIN_DIR)/*
 

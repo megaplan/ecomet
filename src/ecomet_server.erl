@@ -61,6 +61,7 @@
 
 init(_) ->
     C = ecomet_conf:get_config(),
+    mpln_p_debug:pr({'init config', ?MODULE, ?LINE, C}, [], run, 0),
     New = prepare_all(C),
     [application:start(X) || X <- [sasl, crypto, public_key, ssl]], % FIXME
     mpln_p_debug:pr({'init done', ?MODULE, ?LINE}, New#csr.debug, run, 1),
@@ -408,6 +409,14 @@ add_child(St, Ext_pars) ->
 %%
 %% @doc gets config for yaws and starts embedded yaws server
 %%
+start_yaws(#csr{yaws_config=[]} = C) ->
+    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, 'not_starting_yaws'},
+        C#csr.debug, run, 0);
+
+start_yaws(#csr{yaws_config=undefined} = C) ->
+    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, 'not_starting_yaws'},
+        C#csr.debug, run, 0);
+
 start_yaws(C) ->
     Y = C#csr.yaws_config,
     Docroot = proplists:get_value(docroot, Y, ""),
@@ -417,7 +426,7 @@ start_yaws(C) ->
     mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, Y,
                      Docroot, SconfList, GconfList, Id}, C#csr.debug, run, 4),
     Res = yaws:start_embedded(Docroot, SconfList, GconfList, Id),
-    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, Res}, C#csr.debug, run, 3).
+    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, Res}, C#csr.debug, run, 0).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -432,9 +441,12 @@ start_socketio(#csr{socketio_config=S} = C) ->
 %%-----------------------------------------------------------------------------
 do_start_socketio(_C, undefined) ->
     {error, port_undefined};
+
 do_start_socketio(_C, Port) ->
     Mod = 'ecomet_socketio_handler',
-    [application:start(X) || X <- [misultin, socketio]], % FIXME
+    %Res0 = [application:start(X) || X <- [misultin, socketio]], % FIXME
+    %mpln_p_debug:pr({?MODULE, socketio_start, ?LINE, apps_started, Res0},
+    %                C#csr.debug, run, 1),
     {ok, Pid} = socketio_listener:start([{http_port, Port},
                                          {default_http_handler, Mod}]),
     EventMgr = socketio_listener:event_manager(Pid),

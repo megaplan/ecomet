@@ -145,7 +145,7 @@ send_auth_req(#child{id=Id}
     Cookie = ecomet_data_msg:get_auth_cookie(Info),
     Res = proceed_http_auth_req(St, Url, Cookie),
     mpln_p_debug:pr({?MODULE, 'send_auth_req res', ?LINE, Id, Res},
-                    St#child.debug, run, 5),
+                    St#child.debug, http, 6),
     {Res, Url, Cookie}.
 
 %%-----------------------------------------------------------------------------
@@ -157,16 +157,20 @@ proceed_http_auth_req(#child{id=Id, http_connect_timeout=Conn_t,
     Hdr = make_header(Cookie),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
     mpln_p_debug:pr({?MODULE, 'proceed_http_auth_req', ?LINE, Id, Req},
-                    St#child.debug, run, 4),
-    httpc:request(post, Req,
+                    St#child.debug, http, 4),
+    Res = httpc:request(post, Req,
                   [{timeout, Http_t}, {connect_timeout, Conn_t}],
-                  []).
+                  [{body_format, binary}]),
+    mpln_p_debug:pr({?MODULE, 'proceed_http_auth_req result', ?LINE, Id, Res},
+                    St#child.debug, http, 5),
+    Res.
 
 %%-----------------------------------------------------------------------------
 make_header(Cookie) ->
     Str = mpln_misc_web:make_string(Cookie),
     [
-     {"cookie", Str}
+     {"cookie", Str},
+     {"User-Agent","erpher"}
      ].
 
 %%-----------------------------------------------------------------------------
@@ -182,9 +186,13 @@ proceed_auth_msg(St, {ok, Info}, Data) ->
     Type = ecomet_data_msg:get_type(Data),
     proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data);
 
-proceed_auth_msg(#child{id=Id} = St, {error, _Reason}, _Data) ->
-    mpln_p_debug:pr({?MODULE, proceed_auth_msg, ?LINE, error, Id},
-                    St#child.debug, run, 3),
+proceed_auth_msg(#child{id=Id} = St, {error, Reason}, _Data) ->
+    Bin = mpln_misc_web:make_term_binary(Reason),
+    Short = mpln_misc_web:sub_bin(Bin),
+    ejobman_stat:add(Id, 'auth', {'http_error', Short}),
+    mpln_p_debug:pr({?MODULE, proceed_auth_msg, ?LINE, error, Id, Reason},
+                    St#child.debug, run, 1),
+    ecomet_conn_server:stop(self()),
     St#child{id_s = undefined}.
 
 %%-----------------------------------------------------------------------------
@@ -197,7 +205,9 @@ proceed_auth_msg(#child{id=Id} = St, {error, _Reason}, _Data) ->
 
 proceed_type_msg(#child{id=Id, id_s=undefined} = St, _, _, _) ->
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, 'undefined id_s', Id},
-                    St#child.debug, run, 4),
+                    St#child.debug, run, 2),
+    ejobman_stat:add(Id, 'auth', {'error', 'undefined user id'}),
+    ecomet_conn_server:stop(self()),
     St;
 
 proceed_type_msg(#child{id=Id, conn=Conn, sio_cli=Client, no_local=No_local,
@@ -251,9 +261,10 @@ process_auth_resp(_, _) ->
 %% @doc decodes json http response, creates exchange. Returns user_id and
 %% exchange
 %%
-proceed_process_auth_resp(St, Body) ->
+proceed_process_auth_resp(#child{id=Id} = St, Body) ->
     case get_json_body(Body) of
         undefined ->
+            ejobman_stat:add(Id, 'auth', {'error', 'json undefined'}),
             {undefined, <<>>};
         Data ->
             X = create_exchange(St, Data),

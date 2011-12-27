@@ -147,7 +147,7 @@ fill_config(List) ->
 -spec get_config_list() -> list().
 
 get_config_list() ->
-    application:get_all_env('ecomet_server').
+    application:get_all_env('ecomet').
 
 %%%----------------------------------------------------------------------------
 %%% EUnit tests
