@@ -44,6 +44,7 @@
 -export([subscribe/4]).
 -export([del_child/3]).
 -export([add_sio/4, del_sio/1, sio_msg/3]).
+-export([sjs_add/1, sjs_del/1, sjs_msg/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -98,6 +99,13 @@ handle_call({add_sio, Mgr, Handler, Client, Sid}, _From, St) ->
     {Res, St_c} = add_sio_child(St, Mgr, Handler, Client, Sid),
     New = do_smth(St_c),
     {reply, Res, New, ?T};
+
+handle_call({sjs_add, Conn}, _From, St) ->
+    mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE}, St#csr.debug, run, 2),
+    {Res, St_c} = add_sjs_child(St, Conn),
+    New = do_smth(St_c),
+    {reply, Res, New, ?T};
+
 handle_call(status, _From, St) ->
     New = do_smth(St),
     {reply, St, New, ?T};
@@ -134,6 +142,17 @@ handle_cast({del_sio, Pid}, St) ->
     St_p = del_sio_pid(St, Pid),
     New = do_smth(St_p),
     {noreply, New, ?T};
+
+handle_cast({sjs_del, Conn}, St) ->
+    St_p = del_sjs_pid(St, Conn),
+    New = do_smth(St_p),
+    {noreply, New, ?T};
+
+handle_cast({sjs_msg, Conn, Data}, St) ->
+    St_p = process_sjs_msg(St, Conn, Data),
+    New = do_smth(St_p),
+    {noreply, New, ?T};
+
 handle_cast(_, St) ->
     New = do_smth(St),
     {noreply, New, ?T}.
@@ -168,6 +187,20 @@ start_link() ->
 %%-----------------------------------------------------------------------------
 stop() ->
     gen_server:call(?MODULE, stop).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc 
+%% @since 2012-01-17 18:11
+%%
+sjs_add(Conn) ->
+    gen_server:call(?MODULE, {sjs_add, Conn}).
+
+sjs_del(Conn) ->
+    gen_server:cast(?MODULE, {sjs_del, Conn}).
+
+sjs_msg(Conn, Data) ->
+    gen_server:cast(?MODULE, {sjs_msg, Conn, Data}).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -367,6 +400,15 @@ add_sio_child(St, Mgr, Handler, Client, Sid) ->
             {sio_sid, Sid},
             {no_local, true}, % FIXME: make it a var?
             {type, 'sio'}
+           ],
+    add_child(St, Pars).
+
+%%-----------------------------------------------------------------------------
+add_sjs_child(St, Conn) ->
+    Pars = [
+            {sjs_conn, Conn},
+            {no_local, true}, % FIXME: make it a var?
+            {type, 'sjs'}
            ],
     add_child(St, Pars).
 
@@ -715,6 +757,15 @@ del_lp_pid(#csr{lp_children=L} = St, Pid, Ref) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc 
+%%
+del_sjs_pid(#csr{} = St, Conn) ->
+    mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Conn},
+                    St#csr.debug, run, 2),
+    St.
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc deletes and terminates socket-io related process from a list of children
 %%
 del_sio_pid(#csr{sio_children=L} = St, Pid) ->
@@ -827,6 +878,15 @@ clean_ecomet_long_poll(#csr{lp_request_timeout=Timeout, lp_children=L} = St) ->
         end,
     New_list = lists:filter(F, L),
     St#csr{lp_children=New_list}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc 
+%%
+process_sjs_msg(St, Conn, Data) ->
+    mpln_p_debug:pr({?MODULE, 'process_sjs_msg', ?LINE, Conn, Data},
+                    St#csr.debug, run, 4),
+    St.
 
 %%-----------------------------------------------------------------------------
 %%
