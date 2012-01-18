@@ -8,6 +8,7 @@
     ws_children = [], % web socket
     lp_children = [], % long poll
     sio_children = [], % socket-io
+    sjs_children = [], % sockjs
     lp_last_check,
     lp_check_interval = ?LP_CHECK_INTERVAL,
     lp_request_timeout = ?LP_REQUEST_TIMEOUT,

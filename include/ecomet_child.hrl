@@ -23,6 +23,8 @@
     sio_auth_recheck = ?SIO_AUTH_RECHECK_INTERVAL,
     sio_auth_url,
     sio_auth_cookie,
+    sjs_sid,
+    sjs_conn,
     yaws_pid, % for long poll
     clients = [], % in case of many requests with the very same id (quite unusual not to say sabotage)
     queue,

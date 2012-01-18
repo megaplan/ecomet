@@ -42,6 +42,7 @@
 -export([post_lp_data/3]).
 -export([subscribe/4]).
 -export([data_from_sio/2]).
+-export([data_from_sjs/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -195,6 +196,10 @@ code_change(_Old_vsn, State, _Extra) ->
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
+data_from_sjs(Pid, Data) ->
+    gen_server:cast(Pid, {data_from_sjs, Data}).
+
+%%-----------------------------------------------------------------------------
 data_from_sio(Pid, Data) ->
     gen_server:cast(Pid, {data_from_sio, Data}).
 

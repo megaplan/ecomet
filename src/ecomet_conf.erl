@@ -91,6 +91,8 @@ get_child_config(List) ->
         sio_hdl = proplists:get_value(sio_hdl, List),
         sio_cli = proplists:get_value(sio_cli, List),
         sio_sid = proplists:get_value(sio_sid, List),
+        sjs_sid = proplists:get_value(sjs_sid, List),
+        sjs_conn = proplists:get_value(sjs_conn, List),
         exchange_base = proplists:get_value(exchange_base, List, <<>>),
         event = make_event_bin(List),
         id = proplists:get_value(id, List)

@@ -1,5 +1,5 @@
 -module(ecomet_sockjs_handler).
--export([start/0, dispatcher/0]).
+-export([start/0, dispatcher/1]).
 -define(PORT, 8085).
 
 start() ->
@@ -47,9 +47,10 @@ handle(Req) ->
     mpln_p_debug:pr({?MODULE, 'handle', ?LINE, Req}, [], run, 0),
     {Path0, Req1} = sockjs_http:path(Req),
     Path = clean_path(Path0),
-    mpln_p_debug:pr({?MODULE, 'handle path', ?LINE, Path0, Path, Req1}, [], run, 0),
+    Sid = get_sid(Path),
+    mpln_p_debug:pr({?MODULE, 'handle path', ?LINE, Sid, Path0, Path, Req1}, [], run, 0),
     case sockjs_filters:handle_req(
-           Req1, Path, ecomet_sockjs_handler:dispatcher()) of
+           Req1, Path, ecomet_sockjs_handler:dispatcher(Sid)) of
         nomatch ->
                    case Path of
                        "config.js" ->
@@ -71,9 +72,10 @@ ws_handle(Req) ->
     mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, Req}, [], run, 0),
     {Path0, Req1} = sockjs_http:path(Req),
     Path = clean_path(Path0),
-    mpln_p_debug:pr({?MODULE, 'handle path', ?LINE, Path0, Path, Req1}, [], run, 0),
+    Sid = get_sid(Path),
+    mpln_p_debug:pr({?MODULE, 'handle path', ?LINE, Sid, Path0, Path, Req1}, [], run, 0),
     {Receive, _, _, _} = sockjs_filters:dispatch('GET', Path,
-                                                 ecomet_sockjs_handler:dispatcher()),
+                                                 ecomet_sockjs_handler:dispatcher(Sid)),
     {Receive, Req1}.
 
 static(Req, Path) ->
@@ -101,19 +103,32 @@ clean_path("/")         -> "index.html";
 clean_path("/" ++ Path) -> Path.
 
 %% --------------------------------------------------------------------------
+%% @doc only one leading token as a base!!!
+get_sid(Path) ->
+    case string:tokens(Path, "/") of
+        [_Base, _Server, Client | _ ] ->
+            Client;
+        _ ->
+            undefined
+    end.
 
-dispatcher() ->
-    [{broadcast, fun test_broadcast/2}].
+dispatcher(Sid) ->
+    Fb = fun(Conn, Info) ->
+                test_broadcast(Sid, Conn, Info)
+        end,
+    [
+     {broadcast, Fb}
+    ].
 
-test_broadcast(Conn, init) ->
-    mpln_p_debug:pr({?MODULE, 'test_broadcast init', ?LINE, Conn}, [], run, 0),
-    ecomet_server:sjs_add(Conn),
+test_broadcast(Sid, Conn, init) ->
+    mpln_p_debug:pr({?MODULE, 'test_broadcast init', ?LINE, Sid, Conn}, [], run, 0),
+    ecomet_server:sjs_add(Sid, Conn),
     ok;
-test_broadcast(Conn, closed) ->
-    mpln_p_debug:pr({?MODULE, 'test_broadcast closed', ?LINE, Conn}, [], run, 0),
-    ecomet_server:sjs_del(Conn),
+test_broadcast(Sid, Conn, closed) ->
+    mpln_p_debug:pr({?MODULE, 'test_broadcast closed', ?LINE, Sid, Conn}, [], run, 0),
+    ecomet_server:sjs_del(Sid, Conn),
     ok;
-test_broadcast(Conn, {recv, Data}) ->
-    mpln_p_debug:pr({?MODULE, 'test_broadcast recv', ?LINE, Conn, Data}, [], run, 0),
-    ecomet_server:sjs_data(Conn),
+test_broadcast(Sid, Conn, {recv, Data}) ->
+    mpln_p_debug:pr({?MODULE, 'test_broadcast recv', ?LINE, Sid, Conn, Data}, [], run, 0),
+    ecomet_server:sjs_msg(Sid, Conn, Data),
     ok.
