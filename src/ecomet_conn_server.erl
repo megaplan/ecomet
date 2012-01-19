@@ -109,6 +109,8 @@ handle_cast(stop, St) ->
 
 handle_cast({data_from_sjs, Data}, St) ->
     mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE}, St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Data},
+                    St#child.debug, run, 6),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
     St_i = update_idle(St_r),
     New = do_smth(St_i),
@@ -132,7 +134,7 @@ terminate(_, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
     Res_q = ecomet_rb:teardown_queues(Conn),
     ecomet_server:del_child(self(), Type, Id),
     if Type == 'sjs' ->
-            Sconn:close(3000, "conn. closed");
+            catch Sconn:close(3000, "conn. closed");
        true ->
             ok
     end,
