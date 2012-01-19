@@ -117,7 +117,7 @@ dispatcher(Sid) ->
                 test_broadcast(Sid, Conn, Info)
         end,
     [
-     {broadcast, Fb}
+     {ecomet, Fb}
     ].
 
 test_broadcast(Sid, Conn, init) ->
