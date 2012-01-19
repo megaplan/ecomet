@@ -40,6 +40,8 @@ $(EBIN_DIR) :
 
 dia:
 	dialyzer \
+		-Wrace_conditions \
+		-Werror_handling \
 		$(INCLUDES) \
 		--src \
 		-r $(SRC_DIR)
