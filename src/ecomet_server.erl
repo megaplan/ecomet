@@ -770,7 +770,10 @@ del_lp_pid(#csr{lp_children=L} = St, Pid, Ref) ->
 %% them
 %%
 del_sjs_pid2(St, Ref, Conn) ->
-    Conn:close(3000, "conn. closed."),
+    % gives an exception when trying to close already closed session
+    Res = (catch Conn:close(3000, "conn. closed.")),
+    mpln_p_debug:pr({?MODULE, 'del_sjs_pid2', ?LINE, Ref, Res},
+                    St#csr.debug, run, 3),
     del_sjs_pid(St, undefined, Ref).
 
 del_sjs_pid(#csr{sjs_children=L} = St, Pid, Ref) ->

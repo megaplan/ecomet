@@ -52,9 +52,14 @@
 %%% API
 %%%----------------------------------------------------------------------------
 %%
-%% @doc does recheck auth
+%% @doc does recheck auth. If url/cookie are undefined then it means
+%% the process has not received any auth info from a web client yet.
 %%
 -spec recheck_auth(#child{}) -> #child{}.
+
+recheck_auth(#child{sio_auth_url=undefined, sio_auth_cookie=undefined,
+                   id_s=undefined} = St) ->
+    St;
 
 recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie} = St) ->
     Res_auth = proceed_http_auth_req(St, Url, Cookie),
@@ -69,7 +74,8 @@ recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie} = St) ->
 %%
 -spec process_msg(#child{}, binary()) -> #child{}.
 
-process_msg(#child{id=Id, id_s=Uid} = St, Data) ->
+process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
+    Data = (catch mochijson2:decode(Bin)),
     case ecomet_data_msg:get_auth_info(Data) of
         undefined when Uid == undefined ->
             mpln_p_debug:pr({?MODULE, 'process_msg', ?LINE, 'no auth data', Id},
