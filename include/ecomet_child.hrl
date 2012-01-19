@@ -35,7 +35,7 @@
     exchange_base,
     routes = [], % routing keys
     no_local = false, % for amqp consumer setup
-    type :: 'ws' | 'lp' | 'sio', % web socket, long polling, socket-io
+    type :: 'ws' | 'lp' | 'sio' | 'sjs', % web socket, long polling, socket-io, sockjs
     http_connect_timeout = ?HTTP_CONNECT_TIMEOUT,
     http_timeout = ?HTTP_TIMEOUT,
     event,

@@ -145,7 +145,7 @@ handle_cast({del_sio, Pid}, St) ->
     {noreply, New, ?T};
 
 handle_cast({sjs_del, Sid, Conn}, St) ->
-    St_p = del_sjs_pid(St, Sid, Conn),
+    St_p = del_sjs_pid2(St, Sid, Conn),
     New = do_smth(St_p),
     {noreply, New, ?T};
 
@@ -288,7 +288,7 @@ add_lp(Sock, Event, _, Id) ->
 %% @doc deletes a child from an appropriate list of children
 %% @since 2011-11-18 18:00
 %%
--spec del_child(pid(), 'ws'|'lp'|'sio', reference()) -> ok.
+-spec del_child(pid(), 'ws'|'lp'|'sio'|'sjs', reference()) -> ok.
 
 del_child(Pid, Type, Ref) ->
     gen_server:cast(?MODULE, {del_child, Pid, Type, Ref}).
@@ -519,8 +519,9 @@ prepare_all(C) ->
     prepare_log(C),
     Cst = prepare_stat(C),
     New = prepare_rabbit(Cst),
-    start_yaws(C),
-    start_socketio(C),
+    %start_yaws(C),
+    %start_socketio(C),
+    ecomet_sockjs_handler:start(),
     New.
 
 %%-----------------------------------------------------------------------------
@@ -768,11 +769,15 @@ del_lp_pid(#csr{lp_children=L} = St, Pid, Ref) ->
 %% @doc deletes sockjs related process from a list of children and terminates
 %% them
 %%
-del_sjs_pid(#csr{sjs_children=L} = St, Sid, Conn) ->
-    mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Sid, Conn},
+del_sjs_pid2(St, Ref, Conn) ->
+    Conn:close(3000, "conn. closed."),
+    del_sjs_pid(St, undefined, Ref).
+
+del_sjs_pid(#csr{sjs_children=L} = St, Pid, Ref) ->
+    mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Ref, Pid},
                     St#csr.debug, run, 2),
-    F = fun(#chi{sjs_sid=C_sid}) ->
-                C_sid == Sid
+    F = fun(#chi{id=Id}) ->
+                Id == Ref
         end,
     {Del, Cont} = lists:partition(F, L),
     mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Del, Cont},
@@ -1013,6 +1018,9 @@ is_sjs_child_alive(St, List, Id) ->
 del_child_pid(St, Pid, 'lp', Ref) ->
     del_lp_pid(St, Pid, Ref);
 del_child_pid(St, Pid, 'sio', _Ref) ->
-    del_sio_pid(St, Pid).
+    del_sio_pid(St, Pid);
+
+del_child_pid(St, Pid, 'sjs', Ref) ->
+    del_sjs_pid(St, Pid, Ref).
 
 %%-----------------------------------------------------------------------------

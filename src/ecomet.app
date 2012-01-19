@@ -7,6 +7,7 @@
         ecomet_conf_rabbit,
         ecomet_conn_server,
         ecomet_conn_server_sio,
+        ecomet_conn_server_sjs,
         ecomet_conn_sup,
         ecomet_data,
         ecomet_data_msg,
@@ -25,6 +26,6 @@
     {env, []},
     {mod, {ecomet_server_app,[]}},
     % ssl - for yaws, eworkman - for logs, ejobman - for ejobman_stat
-    {applications, [kernel, stdlib, ssl, rabbit, ejobman, eworkman, socketio]}
+    {applications, [kernel, stdlib, ssl, rabbit, ejobman, eworkman, socketio, sockjs]}
 ]}.
 

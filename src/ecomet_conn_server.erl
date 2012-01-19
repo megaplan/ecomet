@@ -107,6 +107,13 @@ handle_call(_N, _From, St) ->
 handle_cast(stop, St) ->
     {stop, normal, St};
 
+handle_cast({data_from_sjs, Data}, St) ->
+    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE}, St#child.debug, run, 2),
+    St_r = ecomet_conn_server_sjs:process_msg(St, Data),
+    St_i = update_idle(St_r),
+    New = do_smth(St_i),
+    {noreply, New, ?T};
+
 handle_cast({data_from_sio, Data}, St) ->
     mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE}, St#child.debug, run, 2),
     St_r = ecomet_conn_server_sio:process_sio(St, Data),
@@ -120,10 +127,15 @@ handle_cast(_N, St) ->
     {noreply, New, ?T}.
 
 %%-----------------------------------------------------------------------------
-terminate(_, #child{id=Id, type=Type, conn=Conn} = St) ->
+terminate(_, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
     Res_t = ecomet_rb:teardown_tags(Conn),
     Res_q = ecomet_rb:teardown_queues(Conn),
     ecomet_server:del_child(self(), Type, Id),
+    if Type == 'sjs' ->
+            Sconn:close(3000, "conn. closed");
+       true ->
+            ok
+    end,
     mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id, Res_t, Res_q},
                     St#child.debug, run, 2),
     ok.
@@ -354,9 +366,13 @@ send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St,
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc proceeds sending the amqp message to socket-io, websocket or stores it
+%% @doc proceeds sending the amqp message to anysocket or stores it
 %% in a queue for later fetching it by long polling
 %%
+proceed_send(#child{type=sjs} = St, #'basic.deliver'{routing_key=Key},
+             Content) ->
+    ecomet_conn_server_sjs:send(St, Key, Content);
+
 proceed_send(#child{type=sio} = St, #'basic.deliver'{routing_key=Key},
              Content) ->
     ecomet_conn_server_sio:send(St, Key, Content);
@@ -519,7 +535,7 @@ check_auth(#child{sio_auth_last=Last, sio_auth_recheck=Interval} = St) ->
     Now = now(),
     Delta = timer:now_diff(Now, Last),
     if Delta > Interval * 1000000 ->
-            ecomet_conn_server_sio:recheck_auth(St);
+            ecomet_conn_server_sjs:recheck_auth(St);
        true ->
             St
     end.
