@@ -348,7 +348,7 @@ prepare_id(St) ->
 send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St,
                 {Dinfo, Content} = Req) ->
     mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Id, Req},
-                    St#child.debug, rb_msg, 6),
+                    St#child.debug, rb_msg, 7),
     {Payload, Corr_msg} = ecomet_rb:get_content_data(Content),
     case ecomet_data:is_our_id(Base, Corr_msg) of
         true when No_local == true ->
