@@ -277,12 +277,17 @@ get_auth_password(Data) ->
 %% @doc Extracts value for tagged item
 %%
 get_value({struct, List}, Tag) when is_list(List) ->
+    % mochijson2
     case proplists:get_value(Tag, List) of
         {struct, Data} when is_list(Data) ->
+            % mochijson2 again
             Data;
         Other ->
             Other
         end;
+get_value({List}, Tag) when is_list(List) ->
+    % jiffy
+    proplists:get_value(Tag, List);
 get_value(List, Tag) when is_list(List) ->
     proplists:get_value(Tag, List);
 get_value(_Data, _Tag) ->

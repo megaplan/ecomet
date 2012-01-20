@@ -75,7 +75,7 @@ recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie} = St) ->
 -spec process_msg(#child{}, binary()) -> #child{}.
 
 process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
-    Data = (catch mochijson2:decode(Bin)),
+    Data = get_json_body(Bin),
     case ecomet_data_msg:get_auth_info(Data) of
         undefined when Uid == undefined ->
             mpln_p_debug:pr({?MODULE, 'process_msg', ?LINE, 'no auth data', Id},
@@ -92,7 +92,7 @@ process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc sends content and routing key to socket-io client
+%% @doc sends content and routing key to sockjs client
 %% @since 2011-11-24 12:40
 %%
 -spec send(#child{}, binary(), binary() | string()) -> #child{}.
@@ -102,7 +102,7 @@ send(#child{id_s=undefined} = St, _Key, _Body) ->
 send(#child{id=Id, id_s=User, sjs_conn=Conn, sjs_sid=Sid} = St, Key, Body) ->
     Content = get_json_body(Body),
     mpln_p_debug:pr({?MODULE, 'send', ?LINE, Id, User, Sid, Conn,
-                    Key, Body, Content}, St#child.debug, run, 4),
+                    Key, Body, Content}, St#child.debug, run, 5),
     Users = ecomet_data_msg:get_users(Content),
     Message = ecomet_data_msg:get_message(Content),
     case is_user_allowed(User, Users) of
@@ -113,12 +113,13 @@ send(#child{id=Id, id_s=User, sjs_conn=Conn, sjs_sid=Sid} = St, Key, Body) ->
             % encoding hack here is necessary, because current socket-io
             % backend (namely, misultin) crashes on encoding cyrillic utf8.
             % Cowboy isn't tested yet for this.
-            Json = mochijson2:encode(Data),
+            Json = sockjs_util:encode({Data}),
+            %Json = mochijson2:encode(Data),
             Json_b = iolist_to_binary(Json),
-            Json_s = binary_to_list(Json_b),
+            %Json_s = binary_to_list(Json_b),
             mpln_p_debug:pr({?MODULE, 'send', ?LINE, json, Id, Sid, Data,
-                             Json, Json_b, Json_s}, St#child.debug, run, 5),
-            Msg = Json_s,
+                             Json, Json_b}, St#child.debug, run, 6),
+            Msg = Json_b, % for sockjs
             Conn:send(Msg),
             St;
         false ->
@@ -288,7 +289,11 @@ proceed_process_auth_resp(#child{id=Id} = St, Body) ->
 %% @doc decodes json data
 %%
 get_json_body(Body) ->
-    case catch mochijson2:decode(Body) of
+    case catch sockjs_util:decode(Body) of
+        {ok, {List}} when is_list(List) ->
+            List;
+        {ok, Data} ->
+            Data;
         {'EXIT', _Reason} ->
             undefined;
         Data ->
