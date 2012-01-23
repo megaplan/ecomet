@@ -43,6 +43,7 @@
 -export([subscribe/4]).
 -export([data_from_sio/2]).
 -export([data_from_sjs/2]).
+-export([data_from_server/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -106,6 +107,13 @@ handle_call(_N, _From, St) ->
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
     {stop, normal, St};
+
+handle_cast({data_from_server, Data}, St) ->
+    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE}, St#child.debug, run, 2),
+    St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
+    St_i = update_idle(St_r),
+    New = do_smth(St_i),
+    {noreply, New, ?T};
 
 handle_cast({data_from_sjs, Data}, St) ->
     mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE}, St#child.debug, run, 2),
@@ -210,6 +218,18 @@ code_change(_Old_vsn, State, _Extra) ->
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
+%%
+%% @doc used for broadcast by ecomet_server
+%% @since 2012-01-23 16:02
+%%
+data_from_server(Pid, Data) ->
+    gen_server:cast(Pid, {data_from_server, Data}).
+
+%%
+%% @doc forwards data to a connection server which interacts
+%% as a mediator between sockjs library and ecomet server
+%% @since 2012-01-23 16:52
+%%
 data_from_sjs(Pid, Data) ->
     gen_server:cast(Pid, {data_from_sjs, Data}).
 

@@ -36,6 +36,7 @@
 -export([process_msg/2]).
 -export([send/3]).
 -export([recheck_auth/1]).
+-export([process_msg_from_server/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -65,6 +66,19 @@ recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie} = St) ->
     Res_auth = proceed_http_auth_req(St, Url, Cookie),
     proceed_auth_msg(St#child{sio_auth_last=now()}, Res_auth,
                      [{<<"type">>, 'reauth'}]).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc forward data received from ecomet_server to sockjs connection
+%% @since 2012-01-23 16:10
+%%
+-spec process_msg_from_server(#child{}, any()) -> #child{}.
+
+process_msg_from_server(#child{id=Id, sjs_conn=Conn, sjs_sid=Sid} = St, Data) ->
+    mpln_p_debug:pr({?MODULE, 'process_msg_from_server', ?LINE, Id, Sid, Data},
+                    St#child.debug, run, 4),
+    Conn:send(Data),
+    St.
 
 %%-----------------------------------------------------------------------------
 %%

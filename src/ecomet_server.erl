@@ -45,6 +45,7 @@
 -export([del_child/3]).
 -export([add_sio/4, del_sio/1, sio_msg/3]).
 -export([sjs_add/2, sjs_del/2, sjs_msg/3]).
+-export([sjs_broadcast_msg/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -154,6 +155,11 @@ handle_cast({sjs_msg, Sid, Conn, Data}, St) ->
     New = do_smth(St_p),
     {noreply, New, ?T};
 
+handle_cast({sjs_broadcast_msg, Data}, St) ->
+    St_p = process_sjs_broadcast_msg(St, Data),
+    New = do_smth(St_p),
+    {noreply, New, ?T};
+
 handle_cast(_, St) ->
     New = do_smth(St),
     {noreply, New, ?T}.
@@ -191,17 +197,32 @@ stop() ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc 
+%% @doc requests for creating a new sockjs child
 %% @since 2012-01-17 18:11
 %%
 sjs_add(Sid, Conn) ->
     gen_server:call(?MODULE, {sjs_add, Sid, Conn}).
 
+%%
+%% @doc requests for terminating a sockjs child
+%% @since 2012-01-17 18:11
+%%
 sjs_del(Sid, Conn) ->
     gen_server:cast(?MODULE, {sjs_del, Sid, Conn}).
 
+%%
+%% @doc requests for sending a message to a sockjs child
+%% @since 2012-01-17 18:11
+%%
 sjs_msg(Sid, Conn, Data) ->
     gen_server:cast(?MODULE, {sjs_msg, Sid, Conn, Data}).
+
+%%
+%% @doc requests for sending a message to all the sockjs children
+%% @since 2012-01-23 15:24
+%%
+sjs_broadcast_msg(Data) ->
+    gen_server:cast(?MODULE, {sjs_broadcast_msg, Data}).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -905,6 +926,14 @@ clean_ecomet_long_poll(#csr{lp_request_timeout=Timeout, lp_children=L} = St) ->
         end,
     New_list = lists:filter(F, L),
     St#csr{lp_children=New_list}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc sends data to every sockjs child
+%%
+process_sjs_broadcast_msg(#csr{sjs_children=Ch} = St, Data) ->
+    [ecomet_conn_server:data_from_server(Pid, Data) || #chi{pid=Pid} <- Ch],
+     St.
 
 %%-----------------------------------------------------------------------------
 %%
