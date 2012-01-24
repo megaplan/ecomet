@@ -46,6 +46,7 @@
 -export([add_sio/4, del_sio/1, sio_msg/3]).
 -export([sjs_add/2, sjs_del/2, sjs_msg/3]).
 -export([sjs_broadcast_msg/1]).
+-export([get_stat_raw/0]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -106,6 +107,12 @@ handle_call({sjs_add, Sid, Conn}, _From, St) ->
                     St#csr.debug, run, 2),
     {Res, St_c} = add_sjs_child(St, Sid, Conn),
     New = do_smth(St_c),
+    {reply, Res, New, ?T};
+
+% @doc returns accumulated statistic as a list of tuples {atom(), dictionary()}
+handle_call({get_stat, Tag}, _From, #csr{stat=Stat} = St) ->
+    Res = prepare_stat_result(Stat, Tag),
+    New = do_smth(St),
     {reply, Res, New, ?T};
 
 handle_call(status, _From, St) ->
@@ -378,6 +385,10 @@ add_rabbit_inc_own_stat() ->
 add_rabbit_inc_other_stat() ->
     gen_server:cast(?MODULE, add_rabbit_inc_other_stat).
 
+%%-----------------------------------------------------------------------------
+get_stat_raw() ->
+    gen_server:call(?MODULE, {get_stat, raw}).
+
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
@@ -426,14 +437,17 @@ add_sio_child(St, Mgr, Handler, Client, Sid) ->
     add_child(St, Pars).
 
 %%-----------------------------------------------------------------------------
+-spec add_sjs_child(#csr{}, any(), any()) -> {tuple(), #csr{}}.
+
 add_sjs_child(St, Sid, Conn) ->
+    New = add_msg_stat(St, 'sjs_child'),
     Pars = [
             {sjs_sid, Sid},
             {sjs_conn, Conn},
             {no_local, true}, % FIXME: make it a var?
             {type, 'sjs'}
            ],
-    add_child(St, Pars).
+    add_child(New, Pars).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -932,8 +946,9 @@ clean_ecomet_long_poll(#csr{lp_request_timeout=Timeout, lp_children=L} = St) ->
 %% @doc sends data to every sockjs child
 %%
 process_sjs_broadcast_msg(#csr{sjs_children=Ch} = St, Data) ->
+    New = add_msg_stat(St, 'broadcast'),
     [ecomet_conn_server:data_from_server(Pid, Data) || #chi{pid=Pid} <- Ch],
-     St.
+    New.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -1055,4 +1070,11 @@ del_child_pid(St, Pid, 'sio', _Ref) ->
 del_child_pid(St, Pid, 'sjs', Ref) ->
     del_sjs_pid(St, Pid, Ref).
 
+%%-----------------------------------------------------------------------------
+%%
+%% @doc returns accumulated statistic as a list of tuples
+%% {atom(), dictionary()}, where dictionary is a dict of {time, tag} -> amount
+%%
+prepare_stat_result(Stat, raw) ->
+    [{wsock, Stat#stat.wsock}, {rabbit, Stat#stat.rabbit}].
 %%-----------------------------------------------------------------------------
