@@ -94,7 +94,9 @@ dispatcher(Sid) ->
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
-
+%%
+%% @doc handler of misultin's requests
+%%
 misultin_loop(C, Req) ->
     try
         handle(C, {misultin, Req})
@@ -105,12 +107,17 @@ misultin_loop(C, Req) ->
             Req:respond(500, [], "500")
     end.
 
+%%
+%% @doc handler of misultin's web sockets
+%%
 misultin_ws_loop(C, Ws) ->
     {Receive, _} = ws_handle(C, {misultin, Ws}),
     sockjs_http:misultin_ws_loop(Ws, Receive).
 
 %%-----------------------------------------------------------------------------
-
+%%
+%% @doc common handler of http requests
+%%
 handle(C, Req) ->
     mpln_p_debug:pr({?MODULE, 'handle', ?LINE}, C#csr.debug, http, 2),
     mpln_p_debug:pr({?MODULE, 'handle', ?LINE, Req}, C#csr.debug, http, 4),
@@ -120,18 +127,16 @@ handle(C, Req) ->
     case sockjs_filters:handle_req(
            Req1, Path, ecomet_sockjs_handler:dispatcher(Sid)) of
         nomatch ->
-            case Path of
-                "config.js" ->
-                    config_js(C, Req1);
-                _           ->
-                    static(Req1, Path)
-            end;
+            static(Req1, Path);
         Req2    ->
             mpln_p_debug:pr({?MODULE, 'handle', ?LINE, 'req2', Sid, Path},
                             C#csr.debug, http, 3),
             Req2
     end.
 
+%%
+%% @doc common handler of web sockets
+%%
 ws_handle(C, Req) ->
     mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE}, C#csr.debug, http, 2),
     mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, Req}, C#csr.debug, http, 4),
@@ -145,6 +150,9 @@ ws_handle(C, Req) ->
     {Receive, Req1}.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc handler for static requests
+%%
 static(Req, Path) ->
     %% TODO unsafe
     LocalPath = filename:join([module_path(), "priv/www", Path]),
@@ -158,14 +166,6 @@ static(Req, Path) ->
 module_path() ->
     {file, Here} = code:is_loaded(?MODULE),
     filename:dirname(filename:dirname(Here)).
-
-config_js(#csr{sockjs_config=Sc}, Req) ->
-    Port = proplists:get_value(port, Sc),
-    Str_port = integer_to_list(Port),
-    %% TODO parse the file? Good luck, it's JS not JSON.
-    sockjs_http:reply(
-      200, [{"content-type", "application/javascript"}],
-      "var client_opts = {\"url\":\"http://localhost:" ++ Str_port ++ "\",\"disabled_transports\":[],\"sockjs_opts\":{\"devel\":true}};", Req).
 
 clean_path("/")         -> "index.html";
 clean_path("/" ++ Path) -> Path.
