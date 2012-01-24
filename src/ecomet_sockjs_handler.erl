@@ -1,83 +1,131 @@
--module(ecomet_sockjs_handler).
--export([start/0, dispatcher/1]).
--define(PORT, 8085).
+%%%
+%%% ecomet_server: server to create children to serve new websocket requests
+%%%
+%%% Copyright (c) 2011 Megaplan Ltd. (Russia)
+%%%
+%%% Permission is hereby granted, free of charge, to any person obtaining a copy
+%%% of this software and associated documentation files (the "Software"),
+%%% to deal in the Software without restriction, including without limitation
+%%% the rights to use, copy, modify, merge, publish, distribute, sublicense,
+%%% and/or sell copies of the Software, and to permit persons to whom
+%%% the Software is furnished to do so, subject to the following conditions:
+%%%
+%%% The above copyright notice and this permission notice shall be included
+%%% in all copies or substantial portions of the Software.
+%%%
+%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+%%% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+%%% MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+%%% IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+%%% CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+%%% TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+%%% SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+%%%
+%%% @author arkdro <arkdro@gmail.com>
+%%% @since 2011-10-14 15:40
+%%% @license MIT
+%%% @doc server to create children to serve new websocket requests. It connects
+%%% to rabbit and creates children with connection provided.
+%%%
 
-start() ->
-    mpln_p_debug:pr({?MODULE, 'start 1', ?LINE}, [], run, 0),
-    Port = ?PORT,
+-module(ecomet_sockjs_handler).
+
+%%%----------------------------------------------------------------------------
+%%% Exports
+%%%----------------------------------------------------------------------------
+
+-export([start/1, dispatcher/1]).
+
+%%%----------------------------------------------------------------------------
+%%% Includes
+%%%----------------------------------------------------------------------------
+
+-include("ecomet_server.hrl").
+
+%%%----------------------------------------------------------------------------
+%%% API
+%%%----------------------------------------------------------------------------
+
+start(#csr{sockjs_config=Sc} = C) ->
+    mpln_p_debug:pr({?MODULE, 'init', ?LINE}, C#csr.debug, run, 1),
+    Port = proplists:get_value(port, Sc),
     application:start(sockjs),
-    mpln_p_debug:pr({?MODULE, 'start 2', ?LINE}, [], run, 0),
     {ok, HttpImpl} = application:get_env(sockjs, http_impl),
-    mpln_p_debug:pr({?MODULE, 'start 3', ?LINE, HttpImpl}, [], run, 0),
     case HttpImpl of
         misultin ->
-            {ok, _} = misultin:start_link([{loop,        fun misultin_loop/1},
-                                           {ws_loop,     fun misultin_ws_loop/1},
+            Fh  = fun(X) -> misultin_loop(C, X) end,
+            Fws = fun(X) -> misultin_ws_loop(C, X) end,
+            {ok, _} = misultin:start_link([{loop,        Fh},
+                                           {ws_loop,     Fws},
                                            {ws_autoexit, false},
                                            {port,        Port}]);
         cowboy ->
             application:start(cowboy),
-            mpln_p_debug:pr({?MODULE, 'start', ?LINE, 'cowboy ok'}, [], run, 0),
+            Fh  = fun(X) -> handle(C, X) end,
+            Fws = fun(X) -> ws_handle(C, X) end,
             Dispatch = [{'_', [{'_', sockjs_cowboy_handler,
-                        {fun handle/1, fun ws_handle/1}}]}],
+                        {Fh, Fws}}]}],
             cowboy:start_listener(http, 100,
                                   cowboy_tcp_transport, [{port,     Port}],
                                   cowboy_http_protocol, [{dispatch, Dispatch}])
     end,
-    mpln_p_debug:pr({?MODULE, 'started', ?LINE, Port}, [], run, 0),
+    mpln_p_debug:pr({?MODULE, 'init done', ?LINE, Port}, C#csr.debug, run, 1),
     ok.
 
-%% --------------------------------------------------------------------------
+%%-----------------------------------------------------------------------------
 
-misultin_loop(Req) ->
+misultin_loop(C, Req) ->
     try
-        handle({misultin, Req})
+        handle(C, {misultin, Req})
     catch A:B ->
-            io:format("~s ~p ~p~n", [A, B, erlang:get_stacktrace()]),
+            mpln_p_debug:pr({?MODULE, 'misultin_loop', ?LINE,
+                             A, B, erlang:get_stacktrace()},
+                             C#csr.debug, run, 1),
             Req:respond(500, [], "500")
     end.
 
-misultin_ws_loop(Ws) ->
-    {Receive, _} = ws_handle({misultin, Ws}),
+misultin_ws_loop(C, Ws) ->
+    {Receive, _} = ws_handle(C, {misultin, Ws}),
     sockjs_http:misultin_ws_loop(Ws, Receive).
 
-%% --------------------------------------------------------------------------
+%%-----------------------------------------------------------------------------
 
-handle(Req) ->
-    mpln_p_debug:pr({?MODULE, 'handle', ?LINE, Req}, [], run, 0),
+handle(C, Req) ->
+    mpln_p_debug:pr({?MODULE, 'handle', ?LINE}, C#csr.debug, http, 2),
+    mpln_p_debug:pr({?MODULE, 'handle', ?LINE, Req}, C#csr.debug, http, 4),
     {Path0, Req1} = sockjs_http:path(Req),
     Path = clean_path(Path0),
-    Sid = get_sid(Path),
-    mpln_p_debug:pr({?MODULE, 'handle path', ?LINE, Sid, Path0, Path, Req1}, [], run, 0),
+    Sid = get_sid(C, Path),
     case sockjs_filters:handle_req(
            Req1, Path, ecomet_sockjs_handler:dispatcher(Sid)) of
         nomatch ->
                    case Path of
                        "config.js" ->
-                            Res2a = config_js(Req1),
-                            mpln_p_debug:pr({?MODULE, 'handle case 2 config.js', ?LINE, Res2a}, [], run, 0),
+                            Res2a = config_js(C, Req1),
                             Res2a;
                        _           ->
                             Res2b = static(Req1, Path),
-                            mpln_p_debug:pr({?MODULE, 'handle case 2 other', ?LINE, Res2b}, [], run, 0),
                             Res2b
                    end;
         Req2    ->
-                   mpln_p_debug:pr({?MODULE, 'handle case 1 req', ?LINE, Req2},
-                        [], run, 0),
+            mpln_p_debug:pr({?MODULE, 'handle', ?LINE, 'req2', Sid, Path},
+                            C#csr.debug, http, 3),
                    Req2
     end.
 
-ws_handle(Req) ->
-    mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, Req}, [], run, 0),
+ws_handle(C, Req) ->
+    mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE}, C#csr.debug, http, 2),
+    mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, Req}, C#csr.debug, http, 4),
     {Path0, Req1} = sockjs_http:path(Req),
     Path = clean_path(Path0),
-    Sid = get_sid(Path),
-    mpln_p_debug:pr({?MODULE, 'handle path', ?LINE, Sid, Path0, Path, Req1}, [], run, 0),
+    Sid = get_sid(C, Path),
+    mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, 'req2', Sid, Path},
+                    C#csr.debug, http, 3),
     {Receive, _, _, _} = sockjs_filters:dispatch('GET', Path,
                                                  ecomet_sockjs_handler:dispatcher(Sid)),
     {Receive, Req1}.
 
+%%-----------------------------------------------------------------------------
 static(Req, Path) ->
     %% TODO unsafe
     LocalPath = filename:join([module_path(), "priv/www", Path]),
@@ -92,8 +140,9 @@ module_path() ->
     {file, Here} = code:is_loaded(?MODULE),
     filename:dirname(filename:dirname(Here)).
 
-config_js(Req) ->
-    Str_port = integer_to_list(?PORT),
+config_js(#csr{sockjs_config=Sc}, Req) ->
+    Port = proplists:get_value(port, Sc),
+    Str_port = integer_to_list(Port),
     %% TODO parse the file? Good luck, it's JS not JSON.
     sockjs_http:reply(
       200, [{"content-type", "application/javascript"}],
@@ -102,12 +151,15 @@ config_js(Req) ->
 clean_path("/")         -> "index.html";
 clean_path("/" ++ Path) -> Path.
 
-%% --------------------------------------------------------------------------
-%% @doc only one leading token as a base!!!
-get_sid(Path) ->
+%%-----------------------------------------------------------------------------
+%%
+%% @doc removes leading tokens that are not related to a session id
+%%
+get_sid(#csr{sockjs_config=Sc}, Path) ->
+    Ignore = proplists:get_value(sid_ignore_tokens, Sc, 2),
     case string:tokens(Path, "/") of
-        [_Base, _Server, Client | _ ] ->
-            Client;
+        L when is_list(L) andalso length(L) > Ignore ->
+            lists:nth(Ignore + 1, L);
         _ ->
             undefined
     end.

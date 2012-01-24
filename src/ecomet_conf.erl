@@ -136,6 +136,7 @@ fill_config(List) ->
                                    ?LP_YAWS_CHECK_INTERVAL),
         yaws_config = proplists:get_value(yaws_config, List, []),
         socketio_config = proplists:get_value(socketio_config, List, []),
+        sockjs_config = proplists:get_value(sockjs_config, List, []),
         debug = proplists:get_value(debug, List, []),
         child_config = Child_config,
         log = proplists:get_value(log, List)

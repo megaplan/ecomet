@@ -64,10 +64,10 @@
 
 init(_) ->
     C = ecomet_conf:get_config(),
-    mpln_p_debug:pr({'init config', ?MODULE, ?LINE, C}, [], run, 0),
+    mpln_p_debug:pr({?MODULE, 'init config', ?LINE, C}, [], run, 0),
     New = prepare_all(C),
     [application:start(X) || X <- [sasl, crypto, public_key, ssl]], % FIXME
-    mpln_p_debug:pr({'init done', ?MODULE, ?LINE}, New#csr.debug, run, 1),
+    mpln_p_debug:pr({?MODULE, 'init done', ?LINE}, New#csr.debug, run, 1),
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
@@ -556,7 +556,7 @@ prepare_all(C) ->
     New = prepare_rabbit(Cst),
     %start_yaws(C),
     %start_socketio(C),
-    ecomet_sockjs_handler:start(),
+    ecomet_sockjs_handler:start(C),
     New.
 
 %%-----------------------------------------------------------------------------

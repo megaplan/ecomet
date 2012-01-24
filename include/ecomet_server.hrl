@@ -20,6 +20,7 @@
     child_config = [],
     yaws_config = [],
     socketio_config = [],
+    sockjs_config = [],
     log,
     conn, % #conn{}
     rses, % #rses{}
