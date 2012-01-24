@@ -1,5 +1,5 @@
 %%%
-%%% ecomet_server: server to create children to serve new websocket requests
+%%% ecomet_sockjs_handler: handler to create sockjs children
 %%%
 %%% Copyright (c) 2011 Megaplan Ltd. (Russia)
 %%%
@@ -22,10 +22,10 @@
 %%% SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 %%%
 %%% @author arkdro <arkdro@gmail.com>
-%%% @since 2011-10-14 15:40
+%%% @since 2012-01-17 18:39
 %%% @license MIT
-%%% @doc server to create children to serve new websocket requests. It connects
-%%% to rabbit and creates children with connection provided.
+%%% @doc handler that starts sockjs app and gets requests to create children
+%%% to serve new sockjs requests
 %%%
 
 -module(ecomet_sockjs_handler).
@@ -45,6 +45,11 @@
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
+%%
+%% @doc 
+%% @since 2012-01-17 18:39
+%%
+-spec start(#csr{}) -> ok.
 
 start(#csr{sockjs_config=Sc} = C) ->
     mpln_p_debug:pr({?MODULE, 'init', ?LINE}, C#csr.debug, run, 1),
@@ -64,7 +69,7 @@ start(#csr{sockjs_config=Sc} = C) ->
             Fh  = fun(X) -> handle(C, X) end,
             Fws = fun(X) -> ws_handle(C, X) end,
             Dispatch = [{'_', [{'_', sockjs_cowboy_handler,
-                        {Fh, Fws}}]}],
+                                {Fh, Fws}}]}],
             cowboy:start_listener(http, 100,
                                   cowboy_tcp_transport, [{port,     Port}],
                                   cowboy_http_protocol, [{dispatch, Dispatch}])
@@ -73,6 +78,22 @@ start(#csr{sockjs_config=Sc} = C) ->
     ok.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc returns tag (must match with the tag on a client's side) and fun for
+%% handling data that comes from sockjs
+%% @since 2012-01-17 18:39
+%%
+dispatcher(Sid) ->
+    Fb = fun(Conn, Info) ->
+                 bcast(Sid, Conn, Info)
+         end,
+    [
+     {ecomet, Fb}
+    ].
+
+%%%----------------------------------------------------------------------------
+%%% Internal functions
+%%%----------------------------------------------------------------------------
 
 misultin_loop(C, Req) ->
     try
@@ -80,7 +101,7 @@ misultin_loop(C, Req) ->
     catch A:B ->
             mpln_p_debug:pr({?MODULE, 'misultin_loop', ?LINE,
                              A, B, erlang:get_stacktrace()},
-                             C#csr.debug, run, 1),
+                            C#csr.debug, run, 1),
             Req:respond(500, [], "500")
     end.
 
@@ -99,18 +120,16 @@ handle(C, Req) ->
     case sockjs_filters:handle_req(
            Req1, Path, ecomet_sockjs_handler:dispatcher(Sid)) of
         nomatch ->
-                   case Path of
-                       "config.js" ->
-                            Res2a = config_js(C, Req1),
-                            Res2a;
-                       _           ->
-                            Res2b = static(Req1, Path),
-                            Res2b
-                   end;
+            case Path of
+                "config.js" ->
+                    config_js(C, Req1);
+                _           ->
+                    static(Req1, Path)
+            end;
         Req2    ->
             mpln_p_debug:pr({?MODULE, 'handle', ?LINE, 'req2', Sid, Path},
                             C#csr.debug, http, 3),
-                   Req2
+            Req2
     end.
 
 ws_handle(C, Req) ->
@@ -165,22 +184,18 @@ get_sid(#csr{sockjs_config=Sc}, Path) ->
     end.
 
 %%-----------------------------------------------------------------------------
-dispatcher(Sid) ->
-    Fb = fun(Conn, Info) ->
-                test_broadcast(Sid, Conn, Info)
-        end,
-    [
-     {ecomet, Fb}
-    ].
-
-%%-----------------------------------------------------------------------------
-test_broadcast(Sid, Conn, init) ->
+%%
+%% @doc handler for start/stop/data requests that come from sockjs
+%%
+bcast(Sid, Conn, init) ->
     ecomet_server:sjs_add(Sid, Conn),
     ok;
-test_broadcast(Sid, Conn, closed) ->
+
+bcast(Sid, Conn, closed) ->
     ecomet_server:sjs_del(Sid, Conn),
     ok;
-test_broadcast(Sid, Conn, {recv, Data}) ->
+
+bcast(Sid, Conn, {recv, Data}) ->
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok.
 %%-----------------------------------------------------------------------------
