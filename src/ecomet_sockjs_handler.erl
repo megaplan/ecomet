@@ -164,6 +164,7 @@ get_sid(#csr{sockjs_config=Sc}, Path) ->
             undefined
     end.
 
+%%-----------------------------------------------------------------------------
 dispatcher(Sid) ->
     Fb = fun(Conn, Info) ->
                 test_broadcast(Sid, Conn, Info)
@@ -172,15 +173,14 @@ dispatcher(Sid) ->
      {ecomet, Fb}
     ].
 
+%%-----------------------------------------------------------------------------
 test_broadcast(Sid, Conn, init) ->
-    mpln_p_debug:pr({?MODULE, 'test_broadcast init', ?LINE, Sid, Conn}, [], run, 0),
     ecomet_server:sjs_add(Sid, Conn),
     ok;
 test_broadcast(Sid, Conn, closed) ->
-    mpln_p_debug:pr({?MODULE, 'test_broadcast closed', ?LINE, Sid, Conn}, [], run, 0),
     ecomet_server:sjs_del(Sid, Conn),
     ok;
 test_broadcast(Sid, Conn, {recv, Data}) ->
-    mpln_p_debug:pr({?MODULE, 'test_broadcast recv', ?LINE, Sid, Conn, Data}, [], run, 0),
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok.
+%%-----------------------------------------------------------------------------
