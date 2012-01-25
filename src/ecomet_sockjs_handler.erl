@@ -46,7 +46,7 @@
 %%% API
 %%%----------------------------------------------------------------------------
 %%
-%% @doc 
+%% @doc starts configured backend - either misultin or cowboy
 %% @since 2012-01-17 18:39
 %%
 -spec start(#csr{}) -> ok.
@@ -83,6 +83,8 @@ start(#csr{sockjs_config=Sc} = C) ->
 %% handling data that comes from sockjs
 %% @since 2012-01-17 18:39
 %%
+-spec dispatcher(undefined | string()) -> [{atom(), fun()}].
+
 dispatcher(Sid) ->
     Fb = fun(Conn, Info) ->
                  bcast(Sid, Conn, Info)
@@ -174,6 +176,8 @@ clean_path("/" ++ Path) -> Path.
 %%
 %% @doc removes leading tokens that are not related to a session id
 %%
+-spec get_sid(#csr{}, string()) -> undefined | string().
+
 get_sid(#csr{sockjs_config=Sc}, Path) ->
     Ignore = proplists:get_value(sid_ignore_tokens, Sc, 2),
     case string:tokens(Path, "/") of
@@ -187,6 +191,8 @@ get_sid(#csr{sockjs_config=Sc}, Path) ->
 %%
 %% @doc handler for start/stop/data requests that come from sockjs
 %%
+-spec bcast(undefined | string(), any(), init | closed | {recv, any()}) -> ok.
+
 bcast(Sid, Conn, init) ->
     ecomet_server:sjs_add(Sid, Conn),
     ok;
