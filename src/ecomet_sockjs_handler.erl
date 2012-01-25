@@ -34,7 +34,7 @@
 %%% Exports
 %%%----------------------------------------------------------------------------
 
--export([start/1, dispatcher/1]).
+-export([start/1, dispatcher/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -83,14 +83,14 @@ start(#csr{sockjs_config=Sc} = C) ->
 %% handling data that comes from sockjs
 %% @since 2012-01-17 18:39
 %%
--spec dispatcher(undefined | string()) -> [{atom(), fun()}].
+-spec dispatcher(atom(), undefined | string()) -> [{atom(), fun()}].
 
-dispatcher(Sid) ->
+dispatcher(Tag, Sid) ->
     Fb = fun(Conn, Info) ->
                  bcast(Sid, Conn, Info)
          end,
     [
-     {ecomet, Fb}
+     {Tag, Fb}
     ].
 
 %%%----------------------------------------------------------------------------
@@ -120,18 +120,19 @@ misultin_ws_loop(C, Ws) ->
 %%
 %% @doc common handler of http requests
 %%
-handle(C, Req) ->
+handle(#csr{sockjs_config=Sc} = C, Req) ->
     mpln_p_debug:pr({?MODULE, 'handle', ?LINE}, C#csr.debug, http, 2),
     mpln_p_debug:pr({?MODULE, 'handle', ?LINE, Req}, C#csr.debug, http, 4),
     {Path0, Req1} = sockjs_http:path(Req),
     Path = clean_path(Path0),
     Sid = get_sid(C, Path),
+    Tag = proplists:get_value(tag, Sc),
     case sockjs_filters:handle_req(
-           Req1, Path, ecomet_sockjs_handler:dispatcher(Sid)) of
+           Req1, Path, ecomet_sockjs_handler:dispatcher(Tag, Sid)) of
         nomatch ->
             static(Req1, Path);
         Req2    ->
-            mpln_p_debug:pr({?MODULE, 'handle', ?LINE, 'req2', Sid, Path},
+            mpln_p_debug:pr({?MODULE, 'handle', ?LINE, 'req2', Sid, Path, Tag},
                             C#csr.debug, http, 3),
             Req2
     end.
@@ -139,16 +140,17 @@ handle(C, Req) ->
 %%
 %% @doc common handler of web sockets
 %%
-ws_handle(C, Req) ->
+ws_handle(#csr{sockjs_config=Sc} = C, Req) ->
     mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE}, C#csr.debug, http, 2),
     mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, Req}, C#csr.debug, http, 4),
     {Path0, Req1} = sockjs_http:path(Req),
     Path = clean_path(Path0),
     Sid = get_sid(C, Path),
-    mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, 'req2', Sid, Path},
+    Tag = proplists:get_value(tag, Sc),
+    mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, 'req2', Sid, Path, Tag},
                     C#csr.debug, http, 3),
     {Receive, _, _, _} = sockjs_filters:dispatch('GET', Path,
-                                                 ecomet_sockjs_handler:dispatcher(Sid)),
+                             ecomet_sockjs_handler:dispatcher(Tag, Sid)),
     {Receive, Req1}.
 
 %%-----------------------------------------------------------------------------
