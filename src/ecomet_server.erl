@@ -109,7 +109,8 @@ handle_call({sjs_add, Sid, Conn}, _From, St) ->
     New = do_smth(St_c),
     {reply, Res, New, ?T};
 
-% @doc returns accumulated statistic as a list of tuples {atom(), dictionary()}
+% @doc returns accumulated statistic as a list of tuples
+% {atom(), {dict(), dict(), dict()}}
 handle_call({get_stat, Tag}, _From, #csr{stat=Stat} = St) ->
     Res = prepare_stat_result(Stat, Tag),
     New = do_smth(St),
@@ -173,7 +174,7 @@ handle_cast(_, St) ->
 
 %%-----------------------------------------------------------------------------
 terminate(_, _State) ->
-    yaws:stop(),
+    %yaws:stop(),
     ok.
 
 %%-----------------------------------------------------------------------------
