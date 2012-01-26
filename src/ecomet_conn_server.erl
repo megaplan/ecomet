@@ -72,37 +72,32 @@ init([List]) ->
 handle_call({subscribe, Client, Event, No_local}, _From, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, subscribe, ?LINE, Id}, St#child.debug, run, 3),
     St_s = do_subscribe(St, Client, Event, No_local),
-    St_i = update_idle(St_s),
-    New = do_smth(St_i),
-    {reply, ok, New, ?T};
+    New = update_idle(St_s),
+    {reply, ok, New};
 
 %% @doc post request from client via ecomet_server
 handle_call({post_lp_data, Client, Data}, _From, St) ->
     St_r = process_lp_post(St, Client, Data),
-    St_i = update_idle(St_r),
-    New = do_smth(St_i),
-    {reply, ok, New, ?T};
+    New = update_idle(St_r),
+    {reply, ok, New};
 
 %% @doc call from client via ecomet_server for long poll data
 %% @todo make it 'noreply' (is it necessary?)
 handle_call({get_lp_data, Client}, _From, #child{clients=C} = St) ->
     C_dat = #cli{from=Client, start=now()},
     St_r = send_one_queued_msg(St#child{clients=[C_dat|C]}),
-    St_i = update_idle(St_r),
-    New = do_smth(St_i),
-    {reply, ok, New, ?T};
+    New = update_idle(St_r),
+    {reply, ok, New};
 
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 
 handle_call(status, _From, St) ->
-    New = do_smth(St),
-    {reply, St, New, ?T};
+    {reply, St, St};
 
 handle_call(_N, _From, St) ->
     mpln_p_debug:pr({?MODULE, call_other, ?LINE, _N}, St#child.debug, run, 2),
-    New = do_smth(St),
-    {reply, {error, unknown_request}, New, ?T}.
+    {reply, {error, unknown_request}, St}.
 
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
@@ -111,30 +106,26 @@ handle_cast(stop, St) ->
 handle_cast({data_from_server, Data}, St) ->
     mpln_p_debug:pr({?MODULE, data_from_server, ?LINE}, St#child.debug, run, 2),
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
-    St_i = update_idle(St_r),
-    New = do_smth(St_i),
-    {noreply, New, ?T};
+    New = update_idle(St_r),
+    {noreply, New};
 
 handle_cast({data_from_sjs, Data}, St) ->
     mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE}, St#child.debug, run, 2),
     mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Data},
                     St#child.debug, run, 6),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
-    St_i = update_idle(St_r),
-    New = do_smth(St_i),
-    {noreply, New, ?T};
+    New = update_idle(St_r),
+    {noreply, New};
 
 handle_cast({data_from_sio, Data}, St) ->
     mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE}, St#child.debug, run, 2),
     St_r = ecomet_conn_server_sio:process_sio(St, Data),
-    St_i = update_idle(St_r),
-    New = do_smth(St_i),
-    {noreply, New, ?T};
+    New = update_idle(St_r),
+    {noreply, New};
 
 handle_cast(_N, St) ->
     mpln_p_debug:pr({?MODULE, cast_other, ?LINE, _N}, St#child.debug, run, 2),
-    New = do_smth(St),
-    {noreply, New, ?T}.
+    {noreply, St}.
 
 %%-----------------------------------------------------------------------------
 terminate(_, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
@@ -157,21 +148,20 @@ handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req,
     mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, Req},
                     St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),
-    St_r = send_rabbit_msg(St, Req),
-    New = do_smth(St_r),
-    {noreply, New, ?T};
+    New = send_rabbit_msg(St, Req),
+    {noreply, New};
 
 %% @doc amqp setup consumer confirmation. In fact, unnecessary for case
 %% of list of consumers
 handle_info(#'basic.consume_ok'{consumer_tag = Tag}, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Id, Tag},
                     St#child.debug, run, 2),
-    New = do_smth(St#child{conn=(St#child.conn)#conn{consumer=ok}}),
-    {noreply, New, ?T};
+    New = St#child{conn=(St#child.conn)#conn{consumer=ok}},
+    {noreply, New};
 
 handle_info(timeout, St) ->
     New = do_smth(St),
-    {noreply, New, ?T};
+    {noreply, New};
 
 %% @doc init websocket ok
 handle_info({ok, Sock}, #child{id=Id, type=ws, sock=undefined} = State) ->
@@ -180,8 +170,7 @@ handle_info({ok, Sock}, #child{id=Id, type=ws, sock=undefined} = State) ->
     Opts = inet:getopts(Sock, [active, reuseaddr]),
     mpln_p_debug:pr({?MODULE, socket_ok, ?LINE, Id, Sock, Lname, Rname, Opts},
                     State#child.debug, run, 2),
-    New = do_smth(State),
-    {noreply, New#child{sock=Sock}, ?T};
+    {noreply, State#child{sock=Sock}};
 
 %% @doc init websocket failed
 handle_info(_Other, #child{id=Id, type=ws, sock=undefined} = State) ->
@@ -194,9 +183,8 @@ handle_info({tcp, Sock, Data} = Msg, #child{id=Id, type=ws, sock=Sock} = St)
   when Sock =/= undefined ->
     mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Id, Msg},
                     St#child.debug, web_msg, 6),
-    St_m= ecomet_handler_ws:send_msg_q(St, Data),
-    New = do_smth(St_m),
-    {noreply, New, ?T};
+    New = ecomet_handler_ws:send_msg_q(St, Data),
+    {noreply, New};
 
 %% @doc websocket closed
 handle_info({tcp_closed, Sock} = Msg, #child{id=Id, type=ws, sock=Sock} = St) ->
@@ -208,8 +196,7 @@ handle_info({tcp_closed, Sock} = Msg, #child{id=Id, type=ws, sock=Sock} = St) ->
 handle_info(_N, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, info_other, ?LINE, Id, _N},
                     St#child.debug, run, 2),
-    New = do_smth(St),
-    {noreply, New, ?T}.
+    {noreply, St}.
 
 %%-----------------------------------------------------------------------------
 code_change(_Old_vsn, State, _Extra) ->
@@ -290,7 +277,9 @@ prepare_all(C) ->
     Cq = prepare_queue(C#child{start_time=Now, last_use=Now}),
     Cid = prepare_id(Cq),
     Cst = prepare_stat(Cid),
-    prepare_rabbit(Cst).
+    Cr = prepare_rabbit(Cst),
+    Ref = erlang:send_after(?T, self(), periodic_check),
+    Cr#child{timer=Ref}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -338,7 +327,8 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
 %%
 %% @doc does periodic things: clean queue, send queued messages, etc
 %%
-do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max} = State) ->
+do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref}=State) ->
+    mpln_misc_run:cancel_timer(Ref),
     check_idle(State),
     Qnew = clean_queue(Q, Dur, Max),
     St_c = clean_clients(State#child{queue=Qnew}),
@@ -346,7 +336,8 @@ do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max} = State) ->
     St_sent = send_queued_msg(St_a),
     mpln_p_debug:pr({?MODULE, do_smth, ?LINE, Id, St_sent},
                     St_sent#child.debug, run, 7),
-    St_sent.
+    Nref = erlang:send_after(?T, self(), periodic_check),
+    St_sent#child{timer=Nref}.
 
 %%-----------------------------------------------------------------------------
 %%

@@ -39,6 +39,7 @@
     http_connect_timeout = ?HTTP_CONNECT_TIMEOUT,
     http_timeout = ?HTTP_TIMEOUT,
     event,
+    timer :: reference(), % timer for periodic checks
     stat % #stat{}
 }).
 
