@@ -160,14 +160,14 @@ terminate(_, _State) ->
 %%-----------------------------------------------------------------------------
 handle_info(timeout, State) ->
     New = do_smth(State),
-    {noreply, New, ?T};
+    {noreply, New};
 
 handle_info(periodic_check, State) ->
     New = do_smth(State),
-    {noreply, New, ?T};
+    {noreply, New};
 
 handle_info(_, State) ->
-    {noreply, State, ?T}.
+    {noreply, State}.
 
 %%-----------------------------------------------------------------------------
 code_change(_Old_vsn, State, _Extra) ->
