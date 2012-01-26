@@ -855,7 +855,7 @@ do_smth(#csr{timer=Ref} = St) ->
     cancel_timer(Ref),
     St_e = check_ecomet_long_poll(St),
     St_lp = check_yaws_long_poll(St_e),
-    Nref = erlang:send_after(?T * 1000, self(), periodic_check),
+    Nref = erlang:send_after(?T, self(), periodic_check),
     St_lp#csr{timer=Nref}.
 
 %%-----------------------------------------------------------------------------
