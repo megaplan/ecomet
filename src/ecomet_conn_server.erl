@@ -163,6 +163,10 @@ handle_info(timeout, St) ->
     New = do_smth(St),
     {noreply, New};
 
+handle_info(periodic_check, St) ->
+    New = do_smth(St),
+    {noreply, New};
+
 %% @doc init websocket ok
 handle_info({ok, Sock}, #child{id=Id, type=ws, sock=undefined} = State) ->
     Lname = inet:sockname(Sock),
