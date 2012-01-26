@@ -24,8 +24,9 @@
 %%% @author arkdro <arkdro@gmail.com>
 %%% @since 2011-10-14 15:40
 %%% @license MIT
-%%% @doc server to create children to serve new websocket requests. It connects
-%%% to rabbit and creates children with connection provided.
+%%% @doc server to create children to serve new comet requests. Upon a request
+%%% from a underlying comet (sockjs) library. It connects
+%%% to rabbit and creates children with amqp connection provided.
 %%%
 
 -module(ecomet_server).
