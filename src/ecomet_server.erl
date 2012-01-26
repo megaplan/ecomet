@@ -540,16 +540,9 @@ prepare_all(C) ->
     %start_yaws(C),
     %start_socketio(C),
     ecomet_sockjs_handler:start(C),
-    erlang:send_after(?T, self(), periodic_check),
-    New.
+    Ref = erlang:send_after(?T, self(), periodic_check),
+    New#csr{timer=Ref}.
 
-%%-----------------------------------------------------------------------------
-cancel_timer(undefined) ->
-    ok;
-
-cancel_timer(Ref) ->
-    erlang:cancel_timer(Ref).
-    
 %%-----------------------------------------------------------------------------
 %%
 %% @doc prepares rabbit connection
@@ -852,7 +845,7 @@ terminate_sio_children(St, List) ->
 %%
 do_smth(#csr{timer=Ref} = St) ->
     mpln_p_debug:pr({?MODULE, do_smth, ?LINE}, St#csr.debug, run, 6),
-    cancel_timer(Ref),
+    mpln_misc_run:cancel_timer(Ref),
     St_e = check_ecomet_long_poll(St),
     St_lp = check_yaws_long_poll(St_e),
     Nref = erlang:send_after(?T, self(), periodic_check),
