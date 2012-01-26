@@ -51,6 +51,11 @@
 %%
 -spec start(#csr{}) -> ok.
 
+start(#csr{sockjs_config=undefined} = C) ->
+    mpln_p_debug:pr({?MODULE, 'init, sockjs undefined', ?LINE},
+                    C#csr.debug, run, 0),
+    ok;
+
 start(#csr{sockjs_config=Sc} = C) ->
     mpln_p_debug:pr({?MODULE, 'init', ?LINE}, C#csr.debug, run, 1),
     Port = proplists:get_value(port, Sc),
