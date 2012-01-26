@@ -73,104 +73,84 @@ init(_) ->
 %%-----------------------------------------------------------------------------
 handle_call({subscribe, Type, Event, No_local, Id}, From, St) ->
     mpln_p_debug:pr({?MODULE, 'subscribe', ?LINE, Id}, St#csr.debug, run, 2),
-    St_s = process_subscribe(St, From, Type, Event, No_local, Id),
-    New = do_smth(St_s),
-    {noreply, New, ?T};
+    New = process_subscribe(St, From, Type, Event, No_local, Id),
+    {noreply, New};
 handle_call({post_lp_data, Event, No_local, Id, Data}, From, St) ->
     mpln_p_debug:pr({?MODULE, 'post_lp_data', ?LINE, Id}, St#csr.debug, run, 2),
-    St_p = process_lp_post(St, From, Event, No_local, Id, Data),
-    New = do_smth(St_p),
-    {noreply, New, ?T};
+    New = process_lp_post(St, From, Event, No_local, Id, Data),
+    {noreply, New};
 handle_call({get_lp_data, Event, No_local, Id}, From, St) ->
     mpln_p_debug:pr({?MODULE, 'get_lp_data', ?LINE, Id}, St#csr.debug, run, 2),
-    St_p = process_lp_req(St, From, Event, No_local, Id),
-    New = do_smth(St_p),
-    {noreply, New, ?T};
+    New = process_lp_req(St, From, Event, No_local, Id),
+    {noreply, New};
 handle_call({add_lp, Sock, Event, No_local, Id}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_lp_child', ?LINE, Id}, St#csr.debug, run, 2),
-    {Res, St_c} = check_lp_child(St, Sock, Event, No_local, Id),
-    New = do_smth(St_c),
-    {reply, Res, New, ?T};
+    {Res, New} = check_lp_child(St, Sock, Event, No_local, Id),
+    {reply, Res, New};
 handle_call({add_ws, Event, No_local}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_ws_child', ?LINE}, St#csr.debug, run, 2),
-    {Res, St_c} = add_ws_child(St, Event, No_local),
-    New = do_smth(St_c),
-    {reply, Res, New, ?T};
+    {Res, New} = add_ws_child(St, Event, No_local),
+    {reply, Res, New};
 handle_call({add_sio, Mgr, Handler, Client, Sid}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_sio_child', ?LINE}, St#csr.debug, run, 2),
-    {Res, St_c} = add_sio_child(St, Mgr, Handler, Client, Sid),
-    New = do_smth(St_c),
-    {reply, Res, New, ?T};
+    {Res, New} = add_sio_child(St, Mgr, Handler, Client, Sid),
+    {reply, Res, New};
 
 handle_call({sjs_add, Sid, Conn}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE, Sid},
                     St#csr.debug, run, 2),
-    {Res, St_c} = add_sjs_child(St, Sid, Conn),
-    New = do_smth(St_c),
-    {reply, Res, New, ?T};
+    {Res, New} = add_sjs_child(St, Sid, Conn),
+    {reply, Res, New};
 
 % @doc returns accumulated statistic as a list of tuples
 % {atom(), {dict(), dict(), dict()}}
 handle_call({get_stat, Tag}, _From, #csr{stat=Stat} = St) ->
     Res = prepare_stat_result(Stat, Tag),
-    New = do_smth(St),
-    {reply, Res, New, ?T};
+    {reply, Res, St};
 
 handle_call(status, _From, St) ->
-    New = do_smth(St),
-    {reply, St, New, ?T};
+    {reply, St, St, ?T};
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 handle_call(_N, _From, St) ->
-    New = do_smth(St),
-    {reply, {error, unknown_request}, New, ?T}.
+    {reply, {error, unknown_request}, St}.
 
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
     {stop, normal, St};
 handle_cast(add_rabbit_inc_other_stat, St) ->
-    St_s = add_msg_stat(St, inc_other),
-    New = do_smth(St_s),
-    {noreply, New, ?T};
+    New = add_msg_stat(St, inc_other),
+    {noreply, New};
 handle_cast(add_rabbit_inc_own_stat, St) ->
-    St_s = add_msg_stat(St, inc_own),
-    New = do_smth(St_s),
-    {noreply, New, ?T};
+    New = add_msg_stat(St, inc_own),
+    {noreply, New};
 handle_cast({del_child, Pid, Type, Ref}, St) ->
-    St_p = del_child_pid(St, Pid, Type, Ref),
-    New = do_smth(St_p),
-    {noreply, New, ?T};
+    New = del_child_pid(St, Pid, Type, Ref),
+    {noreply, New};
 handle_cast({lp_pid, Pid}, St) ->
-    St_p = add_lp_pid(St, Pid),
-    New = do_smth(St_p),
-    {noreply, New, ?T};
+    New = add_lp_pid(St, Pid),
+    {noreply, New};
 handle_cast({sio_msg, Pid, Sid, Data}, St) ->
-    St_p = process_sio_msg(St, Pid, Sid, Data),
-    New = do_smth(St_p),
-    {noreply, New, ?T};
+    New = process_sio_msg(St, Pid, Sid, Data),
+    {noreply, New};
 handle_cast({del_sio, Pid}, St) ->
-    St_p = del_sio_pid(St, Pid),
-    New = do_smth(St_p),
-    {noreply, New, ?T};
+    New = del_sio_pid(St, Pid),
+    {noreply, New};
 
 handle_cast({sjs_del, Sid, Conn}, St) ->
-    St_p = del_sjs_pid2(St, Sid, Conn),
-    New = do_smth(St_p),
-    {noreply, New, ?T};
+    New = del_sjs_pid2(St, Sid, Conn),
+    {noreply, New};
 
 handle_cast({sjs_msg, Sid, Conn, Data}, St) ->
-    St_p = process_sjs_msg(St, Sid, Conn, Data),
-    New = do_smth(St_p),
-    {noreply, New, ?T};
+    New = process_sjs_msg(St, Sid, Conn, Data),
+    {noreply, New};
 
 handle_cast({sjs_broadcast_msg, Data}, St) ->
-    St_p = process_sjs_broadcast_msg(St, Data),
-    New = do_smth(St_p),
-    {noreply, New, ?T};
+    New = process_sjs_broadcast_msg(St, Data),
+    {noreply, New};
 
 handle_cast(_, St) ->
-    New = do_smth(St),
-    {noreply, New, ?T}.
+    {noreply, St}.
 
 %%-----------------------------------------------------------------------------
 terminate(_, _State) ->
@@ -181,6 +161,11 @@ terminate(_, _State) ->
 handle_info(timeout, State) ->
     New = do_smth(State),
     {noreply, New, ?T};
+
+handle_info(periodic_check, State) ->
+    New = do_smth(State),
+    {noreply, New, ?T};
+
 handle_info(_, State) ->
     {noreply, State, ?T}.
 
@@ -555,8 +540,16 @@ prepare_all(C) ->
     %start_yaws(C),
     %start_socketio(C),
     ecomet_sockjs_handler:start(C),
+    erlang:send_after(?T, self(), periodic_check),
     New.
 
+%%-----------------------------------------------------------------------------
+cancel_timer(undefined) ->
+    ok;
+
+cancel_timer(Ref) ->
+    erlang:cancel_timer(Ref).
+    
 %%-----------------------------------------------------------------------------
 %%
 %% @doc prepares rabbit connection
@@ -857,10 +850,13 @@ terminate_sio_children(St, List) ->
 %%
 %% @doc does periodic tasks: clean yaws long poll process, etc
 %%
-do_smth(St) ->
+do_smth(#csr{timer=Ref} = St) ->
+    mpln_p_debug:pr({?MODULE, do_smth, ?LINE}, St#csr.debug, run, 6),
+    cancel_timer(Ref),
     St_e = check_ecomet_long_poll(St),
     St_lp = check_yaws_long_poll(St_e),
-    St_lp.
+    Nref = erlang:send_after(?T * 1000, self(), periodic_check),
+    St_lp#csr{timer=Nref}.
 
 %%-----------------------------------------------------------------------------
 %%

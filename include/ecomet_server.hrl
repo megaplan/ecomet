@@ -25,6 +25,7 @@
     conn, % #conn{}
     rses, % #rses{}
     stat, % #stat{}
+    timer :: reference(), % timer reference for periodic check
     debug
 }).
 
