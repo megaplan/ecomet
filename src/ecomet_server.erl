@@ -67,7 +67,6 @@ init(_) ->
     C = ecomet_conf:get_config(),
     mpln_p_debug:pr({?MODULE, 'init config', ?LINE, C}, [], run, 0),
     New = prepare_all(C),
-    [application:start(X) || X <- [sasl, crypto, public_key, ssl]], % FIXME
     mpln_p_debug:pr({?MODULE, 'init done', ?LINE}, New#csr.debug, run, 1),
     {ok, New, ?T}.
 
@@ -524,9 +523,6 @@ do_start_socketio(_C, undefined) ->
 
 do_start_socketio(_C, Port) ->
     Mod = 'ecomet_socketio_handler',
-    %Res0 = [application:start(X) || X <- [misultin, socketio]], % FIXME
-    %mpln_p_debug:pr({?MODULE, socketio_start, ?LINE, apps_started, Res0},
-    %                C#csr.debug, run, 1),
     {ok, Pid} = socketio_listener:start([{http_port, Port},
                                          {default_http_handler, Mod}]),
     EventMgr = socketio_listener:event_manager(Pid),
