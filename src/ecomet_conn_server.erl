@@ -38,9 +38,6 @@
 -export([start/0, start_link/0, start_link/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
--export([get_lp_data/2]).
--export([post_lp_data/3]).
--export([subscribe/4]).
 -export([data_from_sio/2]).
 -export([data_from_sjs/2]).
 -export([data_from_server/2]).
@@ -68,27 +65,6 @@ init([List]) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
-%% @doc subscribe request from client via ecomet_server
-handle_call({subscribe, Client, Event, No_local}, _From, #child{id=Id} = St) ->
-    mpln_p_debug:pr({?MODULE, subscribe, ?LINE, Id}, St#child.debug, run, 3),
-    St_s = do_subscribe(St, Client, Event, No_local),
-    New = update_idle(St_s),
-    {reply, ok, New};
-
-%% @doc post request from client via ecomet_server
-handle_call({post_lp_data, Client, Data}, _From, St) ->
-    St_r = process_lp_post(St, Client, Data),
-    New = update_idle(St_r),
-    {reply, ok, New};
-
-%% @doc call from client via ecomet_server for long poll data
-%% @todo make it 'noreply' (is it necessary?)
-handle_call({get_lp_data, Client}, _From, #child{clients=C} = St) ->
-    C_dat = #cli{from=Client, start=now()},
-    St_r = send_one_queued_msg(St#child{clients=[C_dat|C]}),
-    New = update_idle(St_r),
-    {reply, ok, New};
-
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 
@@ -167,35 +143,6 @@ handle_info(periodic_check, St) ->
     New = do_smth(St),
     {noreply, New};
 
-%% @doc init websocket ok
-handle_info({ok, Sock}, #child{id=Id, type=ws, sock=undefined} = State) ->
-    Lname = inet:sockname(Sock),
-    Rname = inet:peername(Sock),
-    Opts = inet:getopts(Sock, [active, reuseaddr]),
-    mpln_p_debug:pr({?MODULE, socket_ok, ?LINE, Id, Sock, Lname, Rname, Opts},
-                    State#child.debug, run, 2),
-    {noreply, State#child{sock=Sock}};
-
-%% @doc init websocket failed
-handle_info(_Other, #child{id=Id, type=ws, sock=undefined} = State) ->
-    mpln_p_debug:pr({?MODULE, socket_discard, ?LINE, Id, _Other},
-                    State#child.debug, run, 2),
-    {stop, normal, State};
-
-%% @doc data from websocket
-handle_info({tcp, Sock, Data} = Msg, #child{id=Id, type=ws, sock=Sock} = St)
-  when Sock =/= undefined ->
-    mpln_p_debug:pr({?MODULE, tcp_data, ?LINE, Id, Msg},
-                    St#child.debug, web_msg, 6),
-    New = ecomet_handler_ws:send_msg_q(St, Data),
-    {noreply, New};
-
-%% @doc websocket closed
-handle_info({tcp_closed, Sock} = Msg, #child{id=Id, type=ws, sock=Sock} = St) ->
-    mpln_p_debug:pr({?MODULE, tcp_closed, ?LINE, Id, Msg},
-                    St#child.debug, run, 2),
-    {stop, normal, St};
-
 %% @doc unknown info
 handle_info(_N, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, info_other, ?LINE, Id, _N},
@@ -227,30 +174,6 @@ data_from_sjs(Pid, Data) ->
 %%-----------------------------------------------------------------------------
 data_from_sio(Pid, Data) ->
     gen_server:cast(Pid, {data_from_sio, Data}).
-
-%%-----------------------------------------------------------------------------
-get_lp_data(Pid, From) ->
-    get_lp_data(Pid, From, infinity).
-
-get_lp_data(Pid, From, Timeout) ->
-    % FIXME: should be cast
-    gen_server:call(Pid, {get_lp_data, From}, Timeout).
-
-%%-----------------------------------------------------------------------------
-post_lp_data(Pid, From, Data) ->
-    post_lp_data(Pid, From, Data, infinity).
-
-post_lp_data(Pid, From, Data, Timeout) ->
-    % FIXME: should be cast
-    gen_server:call(Pid, {post_lp_data, From, Data}, Timeout).
-
-%%-----------------------------------------------------------------------------
-subscribe(Pid, From, Event, No_local) ->
-    subscribe(Pid, From, Event, No_local, infinity).
-
-subscribe(Pid, From, Event, No_local, Timeout) ->
-    % FIXME: should be cast
-    gen_server:call(Pid, {subscribe, From, Event, No_local}, Timeout).
 
 %%-----------------------------------------------------------------------------
 start() ->
@@ -335,7 +258,7 @@ do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref}=State) ->
     mpln_misc_run:cancel_timer(Ref),
     check_idle(State),
     Qnew = clean_queue(Q, Dur, Max),
-    St_c = clean_clients(State#child{queue=Qnew}),
+    St_c = State#child{queue=Qnew},
     St_a = check_auth(St_c),
     St_sent = send_queued_msg(St_a),
     mpln_p_debug:pr({?MODULE, do_smth, ?LINE, Id, St_sent},
@@ -392,23 +315,7 @@ proceed_send(#child{type=sjs} = St, #'basic.deliver'{routing_key=Key},
 
 proceed_send(#child{type=sio} = St, #'basic.deliver'{routing_key=Key},
              Content) ->
-    ecomet_conn_server_sio:send(St, Key, Content);
-proceed_send(#child{type=ws} = St, _, Content) ->
-    ecomet_handler_ws:send_to_ws(St, Content);
-proceed_send(#child{type=lp} = St, _, Content) ->
-    St_p = store_msg(St, Content),
-    St_p.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc stores message in the state's queue for later transmission
-%%
--spec store_msg(#child{}, binary()) -> #child{}.
-
-store_msg(#child{queue = Q} = St, Data) ->
-    Item = {now(), Data},
-    Qnew = queue:in(Item, Q),
-    St#child{queue=Qnew}.
+    ecomet_conn_server_sio:send(St, Key, Content).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -498,29 +405,6 @@ send_queued_msg(St) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc sends one available message to the original client
-%%
-send_one_queued_msg(St) ->
-    send_msg_if_any(St, false).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc sends data to amqp, returns ok to original client
-%%
-process_lp_post(#child{conn=Conn, event=Rt_key, id_r=Corr} = St,
-           Client, Data) ->
-    ecomet_rb:send_message(Conn#conn.channel, Conn#conn.exchange,
-                           Rt_key, Data, Corr),
-    Resp = make_response_post(),
-    gen_server:reply(Client, Resp),
-    St.
-
-%%-----------------------------------------------------------------------------
-make_response_post() ->
-    {ok, "posted ok"}.
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc updates idle timer on GET/POST requests.
 %%
 update_idle(St) ->
@@ -556,28 +440,5 @@ check_auth(#child{sio_auth_last=Last, sio_auth_recheck=Interval} = St) ->
        true ->
             St
     end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc removes old requests from long poll clients
-%%
-clean_clients(#child{lp_request_timeout=Timeout, clients=C} = St) ->
-    Now = now(),
-    F = fun(#cli{start=T}) ->
-                timer:now_diff(Now, T) =< Timeout * 1000000
-        end,
-    New = lists:filter(F, C),
-    St#child{clients=New}.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc subscribes itself to messages with the given routing key
-%%
--spec do_subscribe(#child{}, any(), string() | binary(), boolean()) -> #child{}.
-
-do_subscribe(St, Client, Event, No_local) ->
-    New = prepare_rabbit(St#child{event=Event, no_local=No_local}),
-    gen_server:reply(Client, ok),
-    New.
 
 %%-----------------------------------------------------------------------------
