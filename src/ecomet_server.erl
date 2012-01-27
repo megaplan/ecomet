@@ -39,10 +39,7 @@
 -export([start/0, start_link/0, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
--export([add_ws/1, add_ws/2, add_lp/3, add_lp/4]).
 -export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
--export([lp_get/3, lp_post/4, lp_pid/1]).
--export([subscribe/4]).
 -export([del_child/3]).
 -export([add_sio/4, del_sio/1, sio_msg/3]).
 -export([sjs_add/2, sjs_del/2, sjs_msg/3]).
@@ -71,26 +68,6 @@ init(_) ->
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
-handle_call({subscribe, Type, Event, No_local, Id}, From, St) ->
-    mpln_p_debug:pr({?MODULE, 'subscribe', ?LINE, Id}, St#csr.debug, run, 2),
-    New = process_subscribe(St, From, Type, Event, No_local, Id),
-    {noreply, New};
-handle_call({post_lp_data, Event, No_local, Id, Data}, From, St) ->
-    mpln_p_debug:pr({?MODULE, 'post_lp_data', ?LINE, Id}, St#csr.debug, run, 2),
-    New = process_lp_post(St, From, Event, No_local, Id, Data),
-    {noreply, New};
-handle_call({get_lp_data, Event, No_local, Id}, From, St) ->
-    mpln_p_debug:pr({?MODULE, 'get_lp_data', ?LINE, Id}, St#csr.debug, run, 2),
-    New = process_lp_req(St, From, Event, No_local, Id),
-    {noreply, New};
-handle_call({add_lp, Sock, Event, No_local, Id}, _From, St) ->
-    mpln_p_debug:pr({?MODULE, 'add_lp_child', ?LINE, Id}, St#csr.debug, run, 2),
-    {Res, New} = check_lp_child(St, Sock, Event, No_local, Id),
-    {reply, Res, New};
-handle_call({add_ws, Event, No_local}, _From, St) ->
-    mpln_p_debug:pr({?MODULE, 'add_ws_child', ?LINE}, St#csr.debug, run, 2),
-    {Res, New} = add_ws_child(St, Event, No_local),
-    {reply, Res, New};
 handle_call({add_sio, Mgr, Handler, Client, Sid}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_sio_child', ?LINE}, St#csr.debug, run, 2),
     {Res, New} = add_sio_child(St, Mgr, Handler, Client, Sid),
@@ -126,9 +103,6 @@ handle_cast(add_rabbit_inc_own_stat, St) ->
     {noreply, New};
 handle_cast({del_child, Pid, Type, Ref}, St) ->
     New = del_child_pid(St, Pid, Type, Ref),
-    {noreply, New};
-handle_cast({lp_pid, Pid}, St) ->
-    New = add_lp_pid(St, Pid),
     {noreply, New};
 handle_cast({sio_msg, Pid, Sid, Data}, St) ->
     New = process_sio_msg(St, Pid, Sid, Data),
@@ -253,52 +227,6 @@ del_sio(Client) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates a websocket child with 'no local' mode (amqp messages from
-%% the child should not return to this child).
-%% @since 2011-10-26 14:14
-%%
--spec add_ws(binary()) -> ok.
-
-add_ws(Event) ->
-    add_ws(Event, true).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc creates a websocket child with respect to 'no local' mode
-%% @since 2011-10-26 14:14
-%%
--spec add_ws(binary(), boolean()) -> ok.
-
-add_ws(Event, true) ->
-    gen_server:call(?MODULE, {add_ws, Event, true});
-add_ws(Event, _) ->
-    gen_server:call(?MODULE, {add_ws, Event, false}).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc creates a long-polling child with 'no local' mode
-%% (amqp messages from the child should not return to this child).
-%% @since 2011-10-26 14:14
-%%
--spec add_lp(any(), binary(), non_neg_integer()) -> ok.
-
-add_lp(Sock, Event, Id) ->
-    add_lp(Sock, Event, true, Id).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc creates a long-polling child with respect to 'no local' mode
-%% @since 2011-10-26 14:14
-%%
--spec add_lp(any(), binary(), boolean(), non_neg_integer()) -> ok.
-
-add_lp(Sock, Event, true, Id) ->
-    gen_server:call(?MODULE, {add_lp, Sock, Event, true, Id});
-add_lp(Sock, Event, _, Id) ->
-    gen_server:call(?MODULE, {add_lp, Sock, Event, false, Id}).
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc deletes a child from an appropriate list of children
 %% @since 2011-11-18 18:00
 %%
@@ -306,50 +234,6 @@ add_lp(Sock, Event, _, Id) ->
 
 del_child(Pid, Type, Ref) ->
     gen_server:cast(?MODULE, {del_child, Pid, Type, Ref}).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc gets data for long poll client, creating a handler process if
-%% necessary that will handle a session for the given id.
-%% @since 2011-11-03 12:26
-%%
--spec lp_get(any(), boolean(), non_neg_integer()) -> {ok, binary()}
-                                                              | {error, any()}.
-
-lp_get(Event, true, Id) ->
-    gen_server:call(?MODULE, {get_lp_data, Event, true, Id}, infinity);
-lp_get(Event, _, Id) ->
-    gen_server:call(?MODULE, {get_lp_data, Event, false, Id}, infinity).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc gets data for long poll client, creating a handler process if
-%% necessary that will handle a session for the given id.
-%% @since 2011-11-03 12:26
-%%
--spec lp_post(any(), boolean(), non_neg_integer(), binary()) -> {ok, binary()}
-                                                              | {error, any()}.
-
-lp_post(Event, true, Id, Data) ->
-    gen_server:call(?MODULE, {post_lp_data, Event, true, Id, Data}, infinity);
-lp_post(Event, _, Id, Data) ->
-    gen_server:call(?MODULE, {post_lp_data, Event, false, Id, Data}, infinity).
-
-%%-----------------------------------------------------------------------------
-lp_pid(Pid) ->
-    gen_server:cast(?MODULE, {lp_pid, Pid}).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc subscribes the client with given id to the given topic in amqp
-%% @since 2011-11-08 18:26
-%%
--spec subscribe('ws' | 'lp', binary() | string(), boolean(),
-                non_neg_integer()) ->
-                       {ok, binary()} | {error, any()}.
-
-subscribe(Type, Event, No_local, Id) ->
-    gen_server:call(?MODULE, {subscribe, Type, Event, No_local, Id}, infinity).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -389,26 +273,6 @@ do_start_child(Id, Pars) ->
     StartFunc = {ecomet_conn_server, start_link, [Ch_conf]},
     Child = {Id, StartFunc, temporary, 1000, worker, [ecomet_conn_server]},
     supervisor:start_child(ecomet_conn_sup, Child).
-
-%%-----------------------------------------------------------------------------
-add_lp_child(St, Sock, Event, No_local, Id) ->
-    Pars = [
-            {id_web, Id},
-            {lp_sock, Sock},
-            {event, Event},
-            {no_local, No_local},
-            {type, 'lp'}
-           ],
-    add_child(St, Pars).
-
-%%-----------------------------------------------------------------------------
-add_ws_child(St, Event, No_local) ->
-    Pars = [
-            {event, Event},
-            {no_local, No_local},
-            {type, 'ws'}
-           ],
-    add_child(St, Pars).
 
 %%-----------------------------------------------------------------------------
 add_sio_child(St, Mgr, Handler, Client, Sid) ->
@@ -597,73 +461,6 @@ reconnect(St) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc checks whether the child with given type and id is alive
-%%
-ensure_child(#csr{ws_children=Ch} = St, 'ws', Id) ->
-    case is_child_alive(St, Ch, Id) of
-        {true, I} ->
-            {{ok, I#chi.pid}, St};
-        {false, _} ->
-            {error, no_websocket_child}
-    end;
-ensure_child(St, 'lp', Id) ->
-    check_lp_child(St, undefined, undefined, undefined, Id);
-ensure_child(St, 'sio', Pid) ->
-    check_sio_child(St, Pid).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc checks whether the child with given id is alive. If yes, then
-%% charges it to do some work, otherwise creates the one
-%%
--spec check_lp_child(#csr{},
-                     undefined | any(),
-                     undefined | binary(),
-                     undefined | boolean(),
-                     non_neg_integer()) ->
-                            {{ok, pid()}, #csr{}}
-                                | {{ok, pid(), any()}, #csr{}}
-                                | {{error, any()}, #csr{}}.
-
-check_lp_child(#csr{lp_children = Ch} = St, Sock, Event, No_local, Id) ->
-    case is_child_alive(St, Ch, Id) of
-        {true, I} ->
-            charge_child(St, I#chi.pid);
-        {false, _} ->
-            add_lp_child(St, Sock, Event, No_local, Id)
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc finds child with given id and checks whether it's alive
-%%
-is_child_alive(St, List, Id) ->
-    mpln_p_debug:pr({?MODULE, "is_child_alive", ?LINE, List, Id},
-                    St#csr.debug, run, 4),
-    L2 = [X || X <- List, X#chi.id_web == Id],
-    mpln_p_debug:pr({?MODULE, "is_child_alive", ?LINE, L2, Id},
-                    St#csr.debug, run, 4),
-    case L2 of
-        [I | _] ->
-            {is_process_alive(I#chi.pid), I};
-        _ ->
-            {false, undefined}
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc child just waits for incoming messages from amqp. All we need
-%% here is to return its pid.
-%%
--spec charge_child(#csr{}, pid()) -> {{ok, pid()}, #csr{}}.
-
-charge_child(St, Pid) ->
-    mpln_p_debug:pr({?MODULE, "charge child", ?LINE, Pid},
-                    St#csr.debug, child, 4),
-    {{ok, Pid}, St}.
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc adds child info into appropriate list - either web socket or long poll
 %% in dependence of given child type.
 %%
@@ -693,95 +490,10 @@ add_child_list2(#csr{sjs_children=C} = St, 'sjs', Data, Pars) ->
     St#csr{sjs_children=[New | C]}.
 
 %%-----------------------------------------------------------------------------
-%%
-%% @doc creates a handler process if it's not done yet, charges the process
-%% to do the work
-%%
--spec process_lp_req(#csr{}, any(), any(), boolean(), non_neg_integer()) ->
-                      #csr{}.
-
-process_lp_req(St, From, Event, No_local, Id) ->
-    case check_lp_child(St, undefined, Event, No_local, Id) of
-        {{ok, Pid}, St_c} ->
-            ecomet_conn_server:get_lp_data(Pid, From),
-            St_c;
-        {{ok, Pid, _Info}, St_c} ->
-            ecomet_conn_server:get_lp_data(Pid, From),
-            St_c;
-        {{error, _Reason} = Res, _New_st} ->
-            gen_server:reply(From, Res),
-            St
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc creates a handler process if it's not done yet, charges the process
-%% to handle the post request
-%%
--spec process_lp_post(#csr{}, any(), any(), boolean(),  non_neg_integer(),
-                      binary()) -> #csr{}.
-
-process_lp_post(St, From, Event, No_local, Id, Data) ->
-    case check_lp_child(St, undefined, Event, No_local, Id) of
-        {{ok, Pid}, St_c} ->
-            ecomet_conn_server:post_lp_data(Pid, From, Data),
-            St_c;
-        {{ok, Pid, _Info}, St_c} ->
-            ecomet_conn_server:post_lp_data(Pid, From, Data),
-            St_c;
-        {{error, _Reason} = Res, _New_st} ->
-            gen_server:reply(From, Res),
-            St
-    end.
-
-%%-----------------------------------------------------------------------------
 add_msg_stat(#csr{stat=#stat{rabbit=Rb_stat} = Stat} = State, Tag) ->
     New_rb_stat = ecomet_stat:add_server_stat(Rb_stat, Tag),
     New_stat = Stat#stat{rabbit=New_rb_stat},
     State#csr{stat = New_stat}.
-
-%%-----------------------------------------------------------------------------
--spec process_subscribe(#csr{}, any(), 'ws'|'lp', binary(), boolean(),
-                        non_neg_integer()) -> #csr{}.
-
-process_subscribe(St, From, Type, Event, No_local, Id) ->
-    mpln_p_debug:pr({?MODULE, "process_subscribe", ?LINE,
-                     From, Type, Event, No_local, Id},
-                    St#csr.debug, child, 4),
-    case ensure_child(St, Type, Id) of
-        {{ok, Pid}, St_c} ->
-            mpln_p_debug:pr({?MODULE, "process_subscribe ok 1", ?LINE, Id},
-                            St#csr.debug, child, 4),
-            ecomet_conn_server:subscribe(Pid, From, Event, No_local),
-            St_c;
-        {{ok, Pid, _Info}, St_c} ->
-            mpln_p_debug:pr({?MODULE, "process_subscribe ok 2", ?LINE, Id},
-                            St#csr.debug, child, 4),
-            ecomet_conn_server:subscribe(Pid, From, Event, No_local),
-            St_c;
-        {error, _Reason} = Res ->
-            mpln_p_debug:pr({?MODULE, "process_subscribe err 1", ?LINE, Id, Res},
-                            St#csr.debug, child, 2),
-            gen_server:reply(From, Res),
-            St
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc adds yaws process that serves long poll piece of s^H data to the
-%% list for later terminating
-%%
-add_lp_pid(#csr{lp_yaws=L} = St, Pid) ->
-    Y = #yp{pid = Pid, start = now()},
-    St#csr{lp_yaws = [Y | L]}.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc deletes a terminated long poll process from a list of children
-%%
-del_lp_pid(#csr{lp_children=L} = St, Pid, Ref) ->
-    L2 = [X || X <- L, (X#chi.pid =/= Pid) or (X#chi.id =/= Ref)],
-    St#csr{lp_children = L2}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -1049,8 +761,6 @@ is_sjs_child_alive(St, List, Id) ->
 %%
 %% @doc deletes a child from a list of children
 %%
-del_child_pid(St, Pid, 'lp', Ref) ->
-    del_lp_pid(St, Pid, Ref);
 del_child_pid(St, Pid, 'sio', _Ref) ->
     del_sio_pid(St, Pid);
 
