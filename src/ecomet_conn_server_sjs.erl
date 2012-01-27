@@ -162,16 +162,55 @@ is_user_allowed(User, Users) ->
 %% @doc makes request to auth server. Returns http answer, auth url, auth cookie
 %%
 -spec send_auth_req(#child{}, list()) -> {{ok, any()} | {error, any()},
-                                          binary(), binary(), binary()}.
+                                          binary(), binary(),
+                                          undefined | binary()}.
 
 send_auth_req(#child{id=Id} = St, Info) ->
-    Url = ecomet_data_msg:get_auth_url(Info),
+    Url0 = ecomet_data_msg:get_auth_url(Info),
     Cookie = ecomet_data_msg:get_auth_cookie(Info),
-    Host = ecomet_data_msg:get_auth_host(Info),
+    {Url, Host} = find_auth_host(St, Url0),
     Res = proceed_http_auth_req(St, Url, Cookie, Host),
     mpln_p_debug:pr({?MODULE, 'send_auth_req res', ?LINE, Id, Res},
                     St#child.debug, http, 6),
     {Res, Url, Cookie, Host}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc extracts auth data from url and returns cleaned url and auth host
+%% (login field of auth data)
+%%
+-spec find_auth_host(#child{}, binary()) -> {binary(), undefined | binary()}.
+
+find_auth_host(#child{user_data_as_auth_host=true} = St, Url) ->
+    Ustr = mpln_misc_web:make_string(Url),
+    case http_uri:parse(Ustr) of
+        {error, _Reason} ->
+            {Url, undefined};
+        {Scheme, User_info, Host, Port, Path, Query} ->
+            Scheme_str = [atom_to_list(Scheme), "://"],
+            Port_str = integer_to_list(Port),
+            Str = [Scheme_str, "", Host, ":", Port_str, Path, Query],
+            Res_url = unicode:characters_to_binary(Str),
+            Auth_host = make_auth_host(User_info),
+            mpln_p_debug:pr({?MODULE, 'find_auth_host', ?LINE,
+                             Res_url, Auth_host}, St#child.debug, http, 4),
+            {Res_url, Auth_host}
+        end;
+
+find_auth_host(_, Url) ->
+    {Url, undefined}.
+    
+%%-----------------------------------------------------------------------------
+%%
+%% @doc splits input string with ":" and returns first token as a binary
+%%
+make_auth_host(Str) ->
+    case string:tokens(Str, ":") of
+        [H|_] ->
+            iolist_to_binary(H);
+        _ ->
+            <<>>
+    end.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -223,7 +262,7 @@ proceed_auth_msg(#child{id=Id,
                        } = St, {error, Reason}, _Data) ->
     Bin = mpln_misc_web:make_term_binary(Reason),
     Short = mpln_misc_web:sub_bin(Bin),
-    ejobman_stat:add(Id, 'auth', {'http_error', Short}),
+    ejobman_stat:add(Id, 'auth', ['http_error', Url, Host, Cookie, Short]),
     mpln_p_debug:pr({?MODULE, proceed_auth_msg, ?LINE, error, Id, Reason},
                     St#child.debug, run, 1),
     ecomet_conn_server:stop(self()),
@@ -247,7 +286,8 @@ proceed_type_msg(#child{id=Id, id_s=undefined,
                     St#child.debug, run, 2),
     Short_rb = mpln_misc_web:make_term_short_bin(Data),
     Short_http = mpln_misc_web:make_term_short_bin(Http_resp),
-    ejobman_stat:add(Id, 'auth', {'error', 'undefined user id'}),
+    ejobman_stat:add(Id, 'auth', ['error', 'undefined user id',
+                                  Url, Host, Cookie, Short_rb, Short_http]),
     ecomet_conn_server:stop(self()),
     St;
 
@@ -281,6 +321,8 @@ proceed_type_msg(#child{id=Id,
                        } = St, _Exch, _Other, Data, Http_resp) ->
     Short_rb = mpln_misc_web:make_term_short_bin(Data),
     Short_http = mpln_misc_web:make_term_short_bin(Http_resp),
+    ejobman_stat:add(Id, 'auth', ['warning', 'undefined type message',
+                                  Url, Host, Cookie, Short_rb, Short_http]),
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, other, Id,
                      _Exch, _Other}, St#child.debug, run, 2),
     St.
@@ -313,7 +355,7 @@ proceed_process_auth_resp(#child{id=Id} = St, Body) ->
         undefined ->
             Bin = mpln_misc_web:make_term_binary(Body),
             Short = mpln_misc_web:sub_bin(Bin),
-            ejobman_stat:add(Id, 'auth', {'error', 'json undefined'}),
+            ejobman_stat:add(Id, 'auth', {'json_error', Short}),
             {undefined, <<>>};
         Data ->
             X = create_exchange(St, Data),

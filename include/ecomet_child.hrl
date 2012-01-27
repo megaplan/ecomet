@@ -35,6 +35,7 @@
     type :: 'ws' | 'lp' | 'sio' | 'sjs', % web socket, long polling, socket-io, sockjs
     http_connect_timeout = ?HTTP_CONNECT_TIMEOUT,
     http_timeout = ?HTTP_TIMEOUT,
+    user_data_as_auth_host :: undefined | boolean(),
     event,
     timer :: reference(), % timer for periodic checks
     stat % #stat{}

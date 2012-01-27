@@ -70,6 +70,8 @@ get_config() ->
 %%
 get_child_config(List) ->
     #child{
+        user_data_as_auth_host = proplists:get_value(user_data_as_auth_host,
+                                                     List, false),
         sio_auth_recheck = proplists:get_value(
                                       sio_auth_recheck_interval,
                                       List, ?SIO_AUTH_RECHECK_INTERVAL),
