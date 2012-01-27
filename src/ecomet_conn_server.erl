@@ -136,11 +136,11 @@ handle_info(#'basic.consume_ok'{consumer_tag = Tag}, #child{id=Id} = St) ->
     {noreply, New};
 
 handle_info(timeout, St) ->
-    New = do_smth(St),
+    New = periodic_check(St),
     {noreply, New};
 
 handle_info(periodic_check, St) ->
-    New = do_smth(St),
+    New = periodic_check(St),
     {noreply, New};
 
 %% @doc unknown info
@@ -254,7 +254,8 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
 %%
 %% @doc does periodic things: clean queue, send queued messages, etc
 %%
-do_smth(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref}=State) ->
+periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref} =
+               State) ->
     mpln_misc_run:cancel_timer(Ref),
     check_idle(State),
     Qnew = clean_queue(Q, Dur, Max),
