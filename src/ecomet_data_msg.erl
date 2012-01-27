@@ -40,6 +40,7 @@
 -export([get_auth_keys/1]).
 -export([get_group/1]).
 -export([get_auth_url/1, get_auth_cookie/1, get_account/1, get_user_id/1]).
+-export([get_auth_host/1]).
 -export([get_routes/1, get_routes/2]).
 -export([get_message/1, get_users/1]).
 
@@ -143,6 +144,16 @@ get_auth_info(Data) ->
 
 get_auth_url(Data) ->
     get_value(Data, <<"authUrl">>).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc Extracts value for auth host
+%% @since 2012-01-27 15:11
+%%
+-spec get_auth_host(any()) -> any().
+
+get_auth_host(Data) ->
+    get_value(Data, <<"authHost">>).
 
 %%-----------------------------------------------------------------------------
 %%

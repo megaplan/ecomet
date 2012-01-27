@@ -19,6 +19,7 @@
     sio_auth_last = {0,0,0},
     sio_auth_recheck = ?SIO_AUTH_RECHECK_INTERVAL,
     sio_auth_url,
+    sio_auth_host,
     sio_auth_cookie,
     sjs_sid,
     sjs_conn,
