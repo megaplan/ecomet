@@ -130,7 +130,8 @@ send(#child{id=Id, id_s=User, sjs_conn=Conn, sjs_sid=Sid} = St, Key, Body) ->
             % encoding hack here is necessary, because current socket-io
             % backend (namely, misultin) crashes on encoding cyrillic utf8.
             % Cowboy isn't tested yet for this.
-            Json = sockjs_util:encode({Data}),
+            %Json = sockjs_util:encode({Data}), % for jiffy
+            Json = sockjs_util:encode(Data), % for mochijson2
             %Json = mochijson2:encode(Data),
             Json_b = iolist_to_binary(Json),
             %Json_s = binary_to_list(Json_b),
