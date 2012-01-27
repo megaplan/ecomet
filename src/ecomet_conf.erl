@@ -73,8 +73,6 @@ get_child_config(List) ->
         sio_auth_recheck = proplists:get_value(
                                       sio_auth_recheck_interval,
                                       List, ?SIO_AUTH_RECHECK_INTERVAL),
-        lp_request_timeout = proplists:get_value(lp_request_timeout, List,
-                                                 ?LP_REQUEST_TIMEOUT),
         idle_timeout = proplists:get_value(idle_timeout, List, ?IDLE_TIMEOUT),
         http_connect_timeout = proplists:get_value(http_connect_timeout,
                                                    List, ?IDLE_TIMEOUT),
@@ -82,7 +80,6 @@ get_child_config(List) ->
         qmax_dur = proplists:get_value(qmax_dur, List, ?QUEUE_MAX_DUR),
         qmax_len = proplists:get_value(qmax_len, List, ?QUEUE_MAX_LEN),
         id_web = proplists:get_value(id_web, List),
-        lp_sock = proplists:get_value(lp_sock, List),
         type = proplists:get_value(type, List, ws),
         no_local = proplists:get_value(no_local, List, false),
         conn = proplists:get_value(conn, List, #rses{}),

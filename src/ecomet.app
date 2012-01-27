@@ -1,7 +1,7 @@
 {application, ecomet, [
     {description, "ecomet server"},
     {id, "ecomet"},
-    {vsn, "1.2"},
+    {vsn, "1.3"},
     {modules, [
         ecomet_conf,
         ecomet_conf_rabbit,
@@ -11,8 +11,6 @@
         ecomet_conn_sup,
         ecomet_data,
         ecomet_data_msg,
-        ecomet_handler_lp,
-        ecomet_handler_ws,
         ecomet_rb,
         ecomet_server_app,
         ecomet_server,
