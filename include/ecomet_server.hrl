@@ -6,12 +6,8 @@
 % state of a server server
 -record(csr, {
     ws_children = [], % web socket
-    lp_children = [], % long poll
     sio_children = [], % socket-io
     sjs_children = [], % sockjs
-    lp_last_check,
-    lp_check_interval = ?LP_CHECK_INTERVAL,
-    lp_request_timeout = ?LP_REQUEST_TIMEOUT,
     lp_yaws = [], % yaws processes serving long polling
     lp_yaws_last_check,
     lp_yaws_check_interval = ?LP_YAWS_CHECK_INTERVAL,

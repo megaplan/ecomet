@@ -230,7 +230,7 @@ del_sio(Client) ->
 %% @doc deletes a child from an appropriate list of children
 %% @since 2011-11-18 18:00
 %%
--spec del_child(pid(), 'ws'|'lp'|'sio'|'sjs', reference()) -> ok.
+-spec del_child(pid(), 'sio'|'sjs', reference()) -> ok.
 
 del_child(Pid, Type, Ref) ->
     gen_server:cast(?MODULE, {del_child, Pid, Type, Ref}).
@@ -464,7 +464,7 @@ reconnect(St) ->
 %% @doc adds child info into appropriate list - either web socket or long poll
 %% in dependence of given child type.
 %%
--spec add_child_list(#csr{}, 'ws' | 'lp' | 'sio' | 'sjs', pid(), reference(),
+-spec add_child_list(#csr{}, 'ws' | 'sio' | 'sjs', pid(), reference(),
                      list()) -> #csr{}.
 
 add_child_list(St, Type, Pid, Id, Pars) ->
@@ -474,8 +474,6 @@ add_child_list(St, Type, Pid, Id, Pars) ->
 
 add_child_list2(#csr{ws_children=C} = St, 'ws', Data, _) ->
     St#csr{ws_children=[Data | C]};
-add_child_list2(#csr{lp_children=C} = St, 'lp', Data, _) ->
-    St#csr{lp_children=[Data | C]};
 add_child_list2(#csr{sio_children=C} = St, 'sio', Data, Pars) ->
     Ev_mgr = proplists:get_value(sio_mgr, Pars),
     Client = proplists:get_value(sio_cli, Pars),
@@ -558,8 +556,7 @@ terminate_sio_children(St, List) ->
 periodic_check(#csr{timer=Ref} = St) ->
     mpln_p_debug:pr({?MODULE, periodic_check, ?LINE}, St#csr.debug, run, 6),
     mpln_misc_run:cancel_timer(Ref),
-    St_e = check_ecomet_long_poll(St),
-    St_lp = check_yaws_long_poll(St_e),
+    St_lp = check_yaws_long_poll(St),
     Nref = erlang:send_after(?T, self(), periodic_check),
     St_lp#csr{timer=Nref}.
 
@@ -605,40 +602,6 @@ clean_yaws_long_poll(#csr{lp_yaws_request_timeout=Timeout, lp_yaws=L} = St) ->
         end,
     New_list = lists:foldl(F, [], L),
     St#csr{lp_yaws=New_list}.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc checks if there was enough time since last cleaning and calls
-%% clean_ecomet_long_poll. This time check is performed to call cleaning
-%% not too frequently
-%%
--spec check_ecomet_long_poll(#csr{}) -> #csr{}.
-
-check_ecomet_long_poll(#csr{lp_last_check=undefined} = St) ->
-    St#csr{lp_last_check=now()};
-check_ecomet_long_poll(#csr{lp_last_check=Last, lp_check_interval=T} = St) ->
-    Now = now(),
-    Delta = timer:now_diff(Now, Last),
-    if Delta > T * 1000 ->
-            clean_ecomet_long_poll(St#csr{lp_last_check=Now});
-       true ->
-            St
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc cleans away old long poll processes from the list. Just cleans
-%% the list, no any killing spree is involved here because processes terminate
-%% themselves
-%%
-clean_ecomet_long_poll(#csr{lp_request_timeout=Timeout, lp_children=L} = St) ->
-    Now = now(),
-    F = fun(#chi{start=T}) ->
-                Delta = timer:now_diff(Now, T),
-                Delta =< Timeout * 1000000
-        end,
-    New_list = lists:filter(F, L),
-    St#csr{lp_children=New_list}.
 
 %%-----------------------------------------------------------------------------
 %%
