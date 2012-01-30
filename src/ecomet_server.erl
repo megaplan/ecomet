@@ -86,7 +86,7 @@ handle_call({get_stat, Tag}, _From, #csr{stat=Stat} = St) ->
     {reply, Res, St};
 
 handle_call(status, _From, St) ->
-    {reply, St, St, ?T};
+    {reply, St, St};
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 handle_call(_N, _From, St) ->
@@ -133,11 +133,11 @@ terminate(_, _State) ->
 
 %%-----------------------------------------------------------------------------
 handle_info(timeout, State) ->
-    New = do_smth(State),
+    New = periodic_check(State),
     {noreply, New};
 
 handle_info(periodic_check, State) ->
-    New = do_smth(State),
+    New = periodic_check(State),
     {noreply, New};
 
 handle_info(_, State) ->
@@ -555,8 +555,8 @@ terminate_sio_children(St, List) ->
 %%
 %% @doc does periodic tasks: clean yaws long poll process, etc
 %%
-do_smth(#csr{timer=Ref} = St) ->
-    mpln_p_debug:pr({?MODULE, do_smth, ?LINE}, St#csr.debug, run, 6),
+periodic_check(#csr{timer=Ref} = St) ->
+    mpln_p_debug:pr({?MODULE, periodic_check, ?LINE}, St#csr.debug, run, 6),
     mpln_misc_run:cancel_timer(Ref),
     St_e = check_ecomet_long_poll(St),
     St_lp = check_yaws_long_poll(St_e),
