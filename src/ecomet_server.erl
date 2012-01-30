@@ -440,7 +440,7 @@ reconnect(St) ->
 %% @doc adds child info into appropriate list - either web socket or long poll
 %% in dependence of given child type.
 %%
--spec add_child_list(#csr{}, 'ws' | 'sio' | 'sjs', pid(), reference(),
+-spec add_child_list(#csr{}, 'sio' | 'sjs', pid(), reference(),
                      list()) -> #csr{}.
 
 add_child_list(St, Type, Pid, Id, Pars) ->
@@ -448,8 +448,6 @@ add_child_list(St, Type, Pid, Id, Pars) ->
     Data = #chi{pid=Pid, id=Id, id_web=Id_web, start=now()},
     add_child_list2(St, Type, Data, Pars).
 
-add_child_list2(#csr{ws_children=C} = St, 'ws', Data, _) ->
-    St#csr{ws_children=[Data | C]};
 add_child_list2(#csr{sio_children=C} = St, 'sio', Data, Pars) ->
     Ev_mgr = proplists:get_value(sio_mgr, Pars),
     Client = proplists:get_value(sio_cli, Pars),

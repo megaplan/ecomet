@@ -5,7 +5,6 @@
 
 % state of a server server
 -record(csr, {
-    ws_children = [], % web socket
     sio_children = [], % socket-io
     sjs_children = [], % sockjs
     child_config = [],
