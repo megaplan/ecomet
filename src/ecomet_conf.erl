@@ -122,13 +122,6 @@ fill_config(List) ->
     Child_config = proplists:get_value(child_config, List, []),
     #csr{
         rses = ecomet_conf_rabbit:stuff_rabbit_with(List),
-        lp_yaws_request_timeout = proplists:get_value(
-                                    lp_yaws_request_timeout, List,
-                                    ?LP_YAWS_REQUEST_TIMEOUT),
-        lp_yaws_check_interval = proplists:get_value(
-                                   lp_yaws_check_interval, List,
-                                   ?LP_YAWS_CHECK_INTERVAL),
-        yaws_config = proplists:get_value(yaws_config, List, []),
         socketio_config = proplists:get_value(socketio_config, List, []),
         sockjs_config = proplists:get_value(sockjs_config, List, []),
         debug = proplists:get_value(debug, List, []),

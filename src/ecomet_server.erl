@@ -336,29 +336,6 @@ add_child(St, Ext_pars) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc gets config for yaws and starts embedded yaws server
-%%
-start_yaws(#csr{yaws_config=[]} = C) ->
-    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, 'not_starting_yaws'},
-        C#csr.debug, run, 0);
-
-start_yaws(#csr{yaws_config=undefined} = C) ->
-    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, 'not_starting_yaws'},
-        C#csr.debug, run, 0);
-
-start_yaws(C) ->
-    Y = C#csr.yaws_config,
-    Docroot = proplists:get_value(docroot, Y, ""),
-    SconfList = proplists:get_value(sconf, Y, []),
-    GconfList = proplists:get_value(gconf, Y, []),
-    Id = proplists:get_value(id, Y, "test_yaws_stub"),
-    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, Y,
-                     Docroot, SconfList, GconfList, Id}, C#csr.debug, run, 4),
-    Res = yaws:start_embedded(Docroot, SconfList, GconfList, Id),
-    mpln_p_debug:pr({?MODULE, start_yaws, ?LINE, Res}, C#csr.debug, run, 0).
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc 
 %%
 start_socketio(#csr{socketio_config=S} = C) ->
@@ -401,7 +378,6 @@ prepare_all(C) ->
     prepare_log(C),
     Cst = prepare_stat(C),
     New = prepare_rabbit(Cst),
-    %start_yaws(C),
     %start_socketio(C),
     ecomet_sockjs_handler:start(C),
     Ref = erlang:send_after(?T, self(), periodic_check),
@@ -551,57 +527,13 @@ terminate_sio_children(St, List) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc does periodic tasks: clean yaws long poll process, etc
+%% @doc does periodic tasks
 %%
 periodic_check(#csr{timer=Ref} = St) ->
     mpln_p_debug:pr({?MODULE, periodic_check, ?LINE}, St#csr.debug, run, 6),
     mpln_misc_run:cancel_timer(Ref),
-    St_lp = check_yaws_long_poll(St),
     Nref = erlang:send_after(?T, self(), periodic_check),
-    St_lp#csr{timer=Nref}.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc checks if there was enough time since last cleaning and calls
-%% clean_yaws_long_poll. This time check is performed to call cleaning
-%% not too frequently
-%%
--spec check_yaws_long_poll(#csr{}) -> #csr{}.
-
-check_yaws_long_poll(#csr{lp_yaws_last_check=undefined} = St) ->
-    St#csr{lp_yaws_last_check=now()};
-check_yaws_long_poll(#csr{lp_yaws_last_check=Last, lp_yaws_check_interval=T}
-                     = St) ->
-    Now = now(),
-    Delta = timer:now_diff(Now, Last),
-    if Delta > T * 1000 ->
-            clean_yaws_long_poll(St#csr{lp_yaws_last_check=Now});
-       true ->
-            St
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc iterates over the list of yaws long poll processes and terminates
-%% those that last too long
-%% @todo rewrite it to use legal Yaws API and not "fast and dirty hacks"
-%% @todo do it on timer (say once a second) and not always
-%%
--spec clean_yaws_long_poll(#csr{}) -> #csr{}.
-
-clean_yaws_long_poll(#csr{lp_yaws_request_timeout=Timeout, lp_yaws=L} = St) ->
-    Now = now(),
-    F = fun(#yp{pid=Pid, start=T} = Ypid, Acc) ->
-                Delta = timer:now_diff(Now, T),
-                if Delta > Timeout * 1000000 ->
-                        exit(Pid, kill),
-                        Acc;
-                   true ->
-                        [Ypid | Acc]
-                end
-        end,
-    New_list = lists:foldl(F, [], L),
-    St#csr{lp_yaws=New_list}.
+    St#csr{timer=Nref}.
 
 %%-----------------------------------------------------------------------------
 %%
