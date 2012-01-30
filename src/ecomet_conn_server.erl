@@ -254,6 +254,8 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
 %%
 %% @doc does periodic things: clean queue, send queued messages, etc
 %%
+-spec periodic_check(#child{}) -> #child{}.
+
 periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref} =
                State) ->
     mpln_misc_run:cancel_timer(Ref),
@@ -414,10 +416,15 @@ update_idle(St) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc checks idle timer and casts stop to itself if it is more than
-%% configured limit. Does not check socket-io processes.
+%% configured limit. Does not check socket-io processes. Does not check
+%% in case of undefined limit
 %%
 check_idle(#child{type='sio'}) ->
     ok;
+
+check_idle(#child{idle_timeout=undefined}) ->
+    ok;
+
 check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T} = St) ->
     Now = now(),
     Delta = timer:now_diff(Now, T),

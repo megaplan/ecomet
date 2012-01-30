@@ -75,7 +75,7 @@ get_child_config(List) ->
         sio_auth_recheck = proplists:get_value(
                                       sio_auth_recheck_interval,
                                       List, ?SIO_AUTH_RECHECK_INTERVAL),
-        idle_timeout = proplists:get_value(idle_timeout, List, ?IDLE_TIMEOUT),
+        idle_timeout = proplists:get_value(idle_timeout, List),
         http_connect_timeout = proplists:get_value(http_connect_timeout,
                                                    List, ?IDLE_TIMEOUT),
         http_timeout = proplists:get_value(http_timeout, List, ?IDLE_TIMEOUT),
