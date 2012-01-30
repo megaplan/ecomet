@@ -6,11 +6,6 @@
     start={0,0,0} % time in now() format
 }).
 
--record(yp, { % yaws process serving long poll
-    pid,
-    start={0,0,0} % time in now() format
-}).
-
 -record(chi, {
     pid,
     id,
