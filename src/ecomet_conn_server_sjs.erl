@@ -187,6 +187,8 @@ find_auth_host(#child{user_data_as_auth_host=true} = St, Url) ->
     case http_uri:parse(Ustr) of
         {error, _Reason} ->
             {Url, undefined};
+        {_, User_info, _, _, _, _} when User_info == "" ->
+            {Url, undefined};
         {Scheme, User_info, Host, Port, Path, Query} ->
             Scheme_str = [atom_to_list(Scheme), "://"],
             Port_str = integer_to_list(Port),
@@ -448,6 +450,43 @@ get_cookie_test() ->
     C1 = ecomet_data_msg:get_auth_cookie(Info),
     %?debugFmt("get_url_test:~n~p~n~p~n", [C0, C1]),
     ?assert(C0 =:= C1).
+
+find_auth_host_test() ->
+    St = #child{user_data_as_auth_host=true,
+                debug=[]},
+    Lst = [
+           {
+             <<"http://mdt-symfony/comet/auth">>, true,
+             <<"http://mdt-symfony/comet/auth">>, undefined
+            },
+           {
+             <<"http://mdt-symfony/comet/auth">>, false,
+             <<"http://mdt-symfony/comet/auth">>, undefined
+           },
+           {
+             <<"http://test.megaplan@mdt-symfony/comet/auth">>, true,
+             <<"http://mdt-symfony:80/comet/auth">>, <<"test.megaplan">>
+           },
+           {
+             <<"http://test.megaplan@mdt-symfony/comet/auth">>, false,
+             <<"http://test.megaplan@mdt-symfony/comet/auth">>, undefined
+           },
+           {
+             <<"http://test.megaplan#@mdt-symfony/comet/auth">>, true,
+             <<"http://mdt-symfony:80/comet/auth">>, <<"test.megaplan#">>
+           },
+           {
+             <<"http://test.megaplan#mdt-symfony/comet/auth">>, true,
+             <<"http://test.megaplan#mdt-symfony/comet/auth">>, undefined
+           }
+          ],
+    F = fun({Url, Flag, Url0, Hdr0} = _Item) ->
+                Config = St#child{user_data_as_auth_host=Flag},
+                Res = find_auth_host(Config, Url),
+                %?debugFmt("find_auth_host_test:~n~p~n~p~n", [Item, Res]),
+                ?assert({Url0, Hdr0} =:= Res)
+        end,
+    lists:foreach(F, Lst).
 
 -endif.
 %%-----------------------------------------------------------------------------
