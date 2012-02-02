@@ -264,7 +264,7 @@ periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref} =
     St_c = State#child{queue=Qnew},
     St_a = check_auth(St_c),
     St_sent = send_queued_msg(St_a),
-    mpln_p_debug:pr({?MODULE, do_smth, ?LINE, Id, St_sent},
+    mpln_p_debug:pr({?MODULE, periodic_check, ?LINE, Id, St_sent},
                     St_sent#child.debug, run, 7),
     Nref = erlang:send_after(?T, self(), periodic_check),
     St_sent#child{timer=Nref}.
