@@ -263,7 +263,7 @@ proceed_auth_msg(#child{id=Id,
                         sio_auth_host=Host,
                         sio_auth_cookie=Cookie
                        } = St, {error, Reason}, _Data) ->
-    Bin = mpln_misc_web:make_term_binary(Reason),
+    Bin = mpln_misc_web:make_term2_binary(Reason),
     Short = mpln_misc_web:sub_bin(Bin),
     ejobman_stat:add(Id, 'auth', ['http_error', Url, Host, Cookie, Short]),
     mpln_p_debug:pr({?MODULE, proceed_auth_msg, ?LINE, error, Id, Reason},
@@ -287,8 +287,8 @@ proceed_type_msg(#child{id=Id, id_s=undefined,
                        } = St, _, _, Data, Http_resp) ->
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, 'undefined id_s', Id},
                     St#child.debug, run, 2),
-    Short_rb = mpln_misc_web:make_term_short_bin(Data),
-    Short_http = mpln_misc_web:make_term_short_bin(Http_resp),
+    Short_rb = mpln_misc_web:make_term2_short_bin(Data),
+    Short_http = mpln_misc_web:make_term2_short_bin(Http_resp),
     ejobman_stat:add(Id, 'auth', ['error', 'undefined user id',
                                   Url, Host, Cookie, Short_rb, Short_http]),
     ecomet_conn_server:stop(self()),
@@ -322,8 +322,8 @@ proceed_type_msg(#child{id=Id,
                         sio_auth_host=Host,
                         sio_auth_cookie=Cookie
                        } = St, _Exch, _Other, Data, Http_resp) ->
-    Short_rb = mpln_misc_web:make_term_short_bin(Data),
-    Short_http = mpln_misc_web:make_term_short_bin(Http_resp),
+    Short_rb = mpln_misc_web:make_term2_short_bin(Data),
+    Short_http = mpln_misc_web:make_term2_short_bin(Http_resp),
     ejobman_stat:add(Id, 'auth', ['warning', 'undefined type message',
                                   Url, Host, Cookie, Short_rb, Short_http]),
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, other, Id,
@@ -356,7 +356,7 @@ process_auth_resp(_, _) ->
 proceed_process_auth_resp(#child{id=Id} = St, Body) ->
     case get_json_body(Body) of
         undefined ->
-            Bin = mpln_misc_web:make_term_binary(Body),
+            Bin = mpln_misc_web:make_term2_binary(Body),
             Short = mpln_misc_web:sub_bin(Bin),
             ejobman_stat:add(Id, 'auth', {'json_error', Short}),
             {undefined, <<>>};
