@@ -126,7 +126,9 @@ send(#child{id=Id, id_s=User, sjs_conn=Conn, sjs_sid=Sid} = St, Key, Body) ->
         true ->
             mpln_p_debug:pr({?MODULE, 'send', ?LINE, allowed, Id, Sid, Message},
                             St#child.debug, run, 4),
-            Data = [{<<"event">>, Key}, {<<"message">>, Message}],
+            Data = [{<<"event">>, Key},
+                {<<"user">>, User},
+                {<<"message">>, Message}],
             % encoding hack here is necessary, because current socket-io
             % backend (namely, misultin) crashes on encoding cyrillic utf8.
             % Cowboy isn't tested yet for this.
