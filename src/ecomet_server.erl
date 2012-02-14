@@ -62,7 +62,6 @@
 
 init(_) ->
     C = ecomet_conf:get_config(),
-    mpln_p_debug:pr({?MODULE, 'init config', ?LINE, C}, [], run, 0),
     New = prepare_all(C),
     mpln_p_debug:pr({?MODULE, 'init done', ?LINE}, New#csr.debug, run, 1),
     {ok, New, ?T}.
@@ -138,6 +137,10 @@ handle_info(timeout, State) ->
 
 handle_info(periodic_check, State) ->
     New = periodic_check(State),
+    {noreply, New};
+
+handle_info(periodic_send_stat, State) ->
+    New = periodic_send_stat(State),
     {noreply, New};
 
 handle_info(_, State) ->
@@ -374,14 +377,15 @@ prepare_log(#csr{log=Log}) ->
 %%
 -spec prepare_all(#csr{}) -> #csr{}.
 
-prepare_all(C) ->
+prepare_all(#csr{log_stat_interval=T} = C) ->
     prepare_log(C),
     Cst = prepare_stat(C),
     New = prepare_rabbit(Cst),
     %start_socketio(C),
     ecomet_sockjs_handler:start(C),
     Ref = erlang:send_after(?T, self(), periodic_check),
-    New#csr{timer=Ref}.
+    Tref = erlang:send_after(T * 1000, self(), periodic_send_stat),
+    New#csr{timer=Ref, timer_stat=Tref}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -532,6 +536,28 @@ periodic_check(#csr{timer=Ref} = St) ->
     mpln_misc_run:cancel_timer(Ref),
     Nref = erlang:send_after(?T, self(), periodic_check),
     St#csr{timer=Nref}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc sends stats and prepares timer for the next sending
+%%
+periodic_send_stat(#csr{timer_stat=Ref, log_stat_interval=T} = St) ->
+    mpln_p_debug:pr({?MODULE, periodic_send_stat, ?LINE}, St#csr.debug, run, 6),
+    mpln_misc_run:cancel_timer(Ref),
+    send_stat(St),
+    Nref = erlang:send_after(T * 1000, self(), periodic_send_stat),
+    St#csr{timer_stat=Nref}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc sends stats to ejobman_stat
+%%
+send_stat(#csr{sio_children=Sio, sjs_children=Sjs}) ->
+    Len1 = length(Sio),
+    Len2 = length(Sjs),
+    ejobman_stat:add('ecomet', 'children', ['socketio', Len1]),
+    ejobman_stat:add('ecomet', 'children', ['sockjs', Len2]),
+    ejobman_stat:add('ecomet', 'children', ['total', Len1 + Len2]).
 
 %%-----------------------------------------------------------------------------
 %%

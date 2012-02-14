@@ -121,6 +121,8 @@ make_event_bin(List) ->
 fill_config(List) ->
     Child_config = proplists:get_value(child_config, List, []),
     #csr{
+        log_stat_interval = proplists:get_value(log_stat_interval, List,
+            ?T * 120),
         rses = ecomet_conf_rabbit:stuff_rabbit_with(List),
         socketio_config = proplists:get_value(socketio_config, List, []),
         sockjs_config = proplists:get_value(sockjs_config, List, []),
