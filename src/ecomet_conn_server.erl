@@ -61,7 +61,8 @@ init([List]) ->
     mpln_p_debug:pr({?MODULE, init_start, ?LINE}, C#child.debug, run, 3),
     New = prepare_all(C),
     mpln_p_debug:pr({?MODULE, init, ?LINE, New}, C#child.debug, run, 6),
-    mpln_p_debug:pr({?MODULE, init_done, ?LINE}, C#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web},
+        C#child.debug, run, 2),
     {ok, New, ?T}.
 
 %%-----------------------------------------------------------------------------
@@ -79,28 +80,36 @@ handle_call(_N, _From, St) ->
 handle_cast(stop, St) ->
     {stop, normal, St};
 
-handle_cast({data_from_server, Data}, St) ->
-    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE}, St#child.debug, run, 2),
+handle_cast({data_from_server, Data}, #child{id=Id} = St) ->
+    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id},
+        St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id, Data},
+                    St#child.debug, web_msg, 6),
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
     New = update_idle(St_r),
     {noreply, New};
 
-handle_cast({data_from_sjs, Data}, St) ->
-    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE}, St#child.debug, run, 2),
-    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Data},
-                    St#child.debug, run, 6),
+handle_cast({data_from_sjs, Data}, #child{id=Id} = St) ->
+    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id},
+        St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id, Data},
+                    St#child.debug, web_msg, 6),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
     New = update_idle(St_r),
     {noreply, New};
 
-handle_cast({data_from_sio, Data}, St) ->
-    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE}, St#child.debug, run, 2),
+handle_cast({data_from_sio, Data}, #child{id=Id} = St) ->
+    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE, Id},
+        St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE, Id, Data},
+                    St#child.debug, web_msg, 6),
     St_r = ecomet_conn_server_sio:process_sio(St, Data),
     New = update_idle(St_r),
     {noreply, New};
 
-handle_cast(_N, St) ->
-    mpln_p_debug:pr({?MODULE, cast_other, ?LINE, _N}, St#child.debug, run, 2),
+handle_cast(_N, #child{id=Id} = St) ->
+    mpln_p_debug:pr({?MODULE, cast_other, ?LINE, Id, _N},
+        St#child.debug, run, 2),
     {noreply, St}.
 
 %%-----------------------------------------------------------------------------
@@ -131,7 +140,7 @@ handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req,
 %% of list of consumers
 handle_info(#'basic.consume_ok'{consumer_tag = Tag}, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Id, Tag},
-                    St#child.debug, run, 2),
+                    St#child.debug, run, 3),
     New = St#child{conn=(St#child.conn)#conn{consumer=ok}},
     {noreply, New};
 
