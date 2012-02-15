@@ -33,7 +33,7 @@
 %%% Exports
 %%%----------------------------------------------------------------------------
 
--export([get_config/0, get_child_config/1]).
+-export([get_config/0, get_config/1, get_child_config/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -59,8 +59,18 @@
 -spec get_config() -> #csr{}.
 
 get_config() ->
+    get_config(#csr{}).
+
+%%
+%% @doc receives input config and updates it with values from environment.
+%% Returns updated config.
+%% @since 2012-02-15 14:45
+%%
+-spec get_config(#csr{}) -> #csr{}.
+
+get_config(Src) ->
     List = get_config_list(),
-    fill_config(List).
+    fill_config(List, Src).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -113,14 +123,14 @@ make_event_bin(List) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc gets data from the list of key-value tuples and stores it into
-%% csr record
+%% the input csr record
 %% @since 2011-10-14 15:50
 %%
--spec fill_config(list()) -> #csr{}.
+-spec fill_config(list(), #csr{}) -> #csr{}.
 
-fill_config(List) ->
+fill_config(List, Src) ->
     Child_config = proplists:get_value(child_config, List, []),
-    #csr{
+    Src#csr{
         log_stat_interval = proplists:get_value(log_stat_interval, List,
             ?T * 120),
         rses = ecomet_conf_rabbit:stuff_rabbit_with(List),
@@ -146,10 +156,10 @@ get_config_list() ->
 %%%----------------------------------------------------------------------------
 -ifdef(TEST).
 fill_config_test() ->
-    #csr{debug=[], log=?LOG} = fill_config([]),
+    #csr{debug=[], log=?LOG} = fill_config([], #csr{}),
     #csr{debug=[{info, 5}, {run, 2}], log=?LOG} =
     fill_config([
         {debug, [{info, 5}, {run, 2}]}
-        ]).
+        ], #csr{}).
 -endif.
 %%-----------------------------------------------------------------------------

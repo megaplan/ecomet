@@ -57,6 +57,7 @@
 %%% gen_server callbacks
 %%%----------------------------------------------------------------------------
 init([List]) ->
+    process_flag(trap_exit, true),
     C = ecomet_conf:get_child_config(List),
     mpln_p_debug:pr({?MODULE, init_start, ?LINE}, C#child.debug, run, 3),
     New = prepare_all(C),

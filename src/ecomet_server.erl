@@ -45,6 +45,9 @@
 -export([sjs_add/2, sjs_del/2, sjs_msg/3]).
 -export([sjs_broadcast_msg/1]).
 -export([get_stat_raw/0]).
+-export([
+    reload_config_signal/0
+    ]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -120,6 +123,10 @@ handle_cast({sjs_msg, Sid, Conn, Data}, St) ->
 
 handle_cast({sjs_broadcast_msg, Data}, St) ->
     New = process_sjs_broadcast_msg(St, Data),
+    {noreply, New};
+
+handle_cast(reload_config_signal, St) ->
+    New = process_reload_config(St),
     {noreply, New};
 
 handle_cast(_, St) ->
@@ -262,6 +269,10 @@ add_rabbit_inc_other_stat() ->
 get_stat_raw() ->
     gen_server:call(?MODULE, {get_stat, raw}).
 
+%%-----------------------------------------------------------------------------
+reload_config_signal() ->
+    gen_server:cast(?MODULE, reload_config_signal).
+
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
@@ -377,10 +388,18 @@ prepare_log(#csr{log=Log}) ->
 %%
 -spec prepare_all(#csr{}) -> #csr{}.
 
-prepare_all(#csr{log_stat_interval=T} = C) ->
+prepare_all(C) ->
+    Crb = prepare_rabbit(C),
+    prepare_part(Crb).
+
+%%
+%% @doc prepares almost all the necessary things, except rabbit
+%%
+-spec prepare_part(#csr{}) -> #csr{}.
+
+prepare_part(#csr{log_stat_interval=T} = C) ->
     prepare_log(C),
-    Cst = prepare_stat(C),
-    New = prepare_rabbit(Cst),
+    New = prepare_stat(C),
     %start_socketio(C),
     ecomet_sockjs_handler:start(C),
     Ref = erlang:send_after(?T, self(), periodic_check),
@@ -530,6 +549,7 @@ terminate_sio_children(St, List) ->
 %%-----------------------------------------------------------------------------
 %%
 %% @doc does periodic tasks
+%% @todo get rid of it
 %%
 periodic_check(#csr{timer=Ref} = St) ->
     mpln_p_debug:pr({?MODULE, periodic_check, ?LINE}, St#csr.debug, run, 6),
@@ -693,4 +713,15 @@ del_child_pid(St, Pid, 'sjs', Ref) ->
 %%
 prepare_stat_result(Stat, raw) ->
     [{wsock, Stat#stat.wsock}, {rabbit, Stat#stat.rabbit}].
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc fetches config from updated environment and stores it in the state
+%%
+-spec process_reload_config(#csr{}) -> #csr{}.
+
+process_reload_config(St) ->
+    C = ecomet_conf:get_config(St),
+    prepare_part(C).
+
 %%-----------------------------------------------------------------------------

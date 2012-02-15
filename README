@@ -1,0 +1,8 @@
+
+notes:
+In process_reload_config you have the following options:
+- terminate current amqp connection and start a new one.
+  Working children would then crash on amqp operations
+- just open a new connection. It can lead to connections leak in case of
+  too often reconfiguration.
+- NOT DONE: open new conn/chann and send it to every child
