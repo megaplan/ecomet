@@ -46,7 +46,7 @@
 %%% API
 %%%----------------------------------------------------------------------------
 %%
-%% @doc starts configured backend - either misultin or cowboy
+%% @doc starts configured backend - currently cowboy only
 %% @since 2012-01-17 18:39
 %%
 -spec start(#csr{}) -> ok.
@@ -59,6 +59,7 @@ start(#csr{sockjs_config=undefined} = C) ->
 start(#csr{sockjs_config=Sc} = C) ->
     mpln_p_debug:pr({?MODULE, 'init', ?LINE}, C#csr.debug, run, 1),
     Port = proplists:get_value(port, Sc),
+    {Base, Base_p} = prepare_base(Sc),
     application:start(sockjs),
     {ok, HttpImpl} = application:get_env(sockjs, http_impl),
     case HttpImpl of
@@ -71,13 +72,21 @@ start(#csr{sockjs_config=Sc} = C) ->
                                            {port,        Port}]);
         cowboy ->
             application:start(cowboy),
-            Fh  = fun(X) -> handle(C, X) end,
-            Fws = fun(X) -> ws_handle(C, X) end,
-            Dispatch = [{'_', [{'_', sockjs_cowboy_handler,
-                                {Fh, Fws}}]}],
+            Fn = fun(X1, X2) ->
+                         service_echo(C, X1, X2)
+                 end,
+            StateEcho = sockjs_handler:init_state(
+                          Base_p,
+                          Fn,
+                          [{cookie_needed, true},
+                           {response_limit, 4096}]),
+            VRoutes = [{[Base, '...'], sockjs_cowboy_handler, StateEcho},
+                       {'_', ?MODULE, []}],
+            Routes = [{'_',  VRoutes}], % any vhost
+
             cowboy:start_listener(http, 100,
                                   cowboy_tcp_transport, [{port,     Port}],
-                                  cowboy_http_protocol, [{dispatch, Dispatch}])
+                                  cowboy_http_protocol, [{dispatch, Routes}])
     end,
     mpln_p_debug:pr({?MODULE, 'init done', ?LINE, Port}, C#csr.debug, run, 1),
     ok.
@@ -211,4 +220,26 @@ bcast(Sid, Conn, closed) ->
 bcast(Sid, Conn, {recv, Data}) ->
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok.
+
+%%-----------------------------------------------------------------------------
+service_echo(C, Conn, {recv, Data}) ->
+    error_logger:info_report({?MODULE, 'service_echo recv', ?LINE, Conn, Data}),
+    mpln_p_debug:pr({?MODULE, 'service_echo recv', ?LINE, Conn, Data},
+                    C#csr.debug, run, 4),
+    sockjs:send(Data, Conn);
+
+service_echo(C, _Conn, _Data) ->
+    mpln_p_debug:pr({?MODULE, 'service_echo other', ?LINE, _Conn, _Data},
+                    C#csr.debug, run, 4),
+    ok.
+
+%%-----------------------------------------------------------------------------
+-spec prepare_base(list()) -> {binary(), binary()}.
+
+prepare_base(List) ->
+    Tag = proplists:get_value(tag, List),
+    Base = mpln_misc_web:make_binary(Tag),
+    Base_p = << <<"/">>/binary, Base/binary>>,
+    {Base, Base_p}.
+
 %%-----------------------------------------------------------------------------
