@@ -128,29 +128,29 @@ module_path() ->
 %%
 %% @doc handler of sockjs messages: init, recv, closed.
 %%
-service_echo(C, Conn, {recv, Data}) ->
-    mpln_p_debug:pr({?MODULE, 'service_echo recv', ?LINE, Conn, Data},
+bcast(C, Conn, {recv, Data}) ->
+    mpln_p_debug:pr({?MODULE, 'bcast recv', ?LINE, Conn, Data},
                     C#csr.debug, run, 4),
     Sid = Conn,
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok;
 
-service_echo(C, Conn, init) ->
-    mpln_p_debug:pr({?MODULE, 'service_echo init', ?LINE, Conn},
+bcast(C, Conn, init) ->
+    mpln_p_debug:pr({?MODULE, 'bcast init', ?LINE, Conn},
                     C#csr.debug, run, 3),
     Sid = Conn,
     ecomet_server:sjs_add(Sid, Conn),
     ok;
 
-service_echo(C, Conn, closed) ->
-    mpln_p_debug:pr({?MODULE, 'service_echo closed', ?LINE, Conn},
+bcast(C, Conn, closed) ->
+    mpln_p_debug:pr({?MODULE, 'bcast closed', ?LINE, Conn},
                     C#csr.debug, run, 3),
     Sid = Conn,
     ecomet_server:sjs_del(Sid, Conn),
     ok;
 
-service_echo(C, _Conn, _Data) ->
-    mpln_p_debug:pr({?MODULE, 'service_echo other', ?LINE, _Conn, _Data},
+bcast(C, _Conn, _Data) ->
+    mpln_p_debug:pr({?MODULE, 'bcast other', ?LINE, _Conn, _Data},
                     C#csr.debug, run, 2),
     ok.
 
@@ -175,7 +175,7 @@ prepare_base(List) ->
 prepare_cowboy(C, Port, Base, Base_p) ->
     application:start(cowboy),
     Fn = fun(X1, X2) ->
-                 service_echo(C, X1, X2)
+                 bcast(C, X1, X2)
          end,
     Flogger = fun(_Service, Req, _Type) ->
                       flogger(C, _Service, Req, _Type)
