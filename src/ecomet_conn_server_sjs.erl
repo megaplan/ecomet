@@ -78,7 +78,7 @@ recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie,
 process_msg_from_server(#child{id=Id, sjs_conn=Conn, sjs_sid=Sid} = St, Data) ->
     mpln_p_debug:pr({?MODULE, 'process_msg_from_server', ?LINE, Id, Sid, Data},
                     St#child.debug, run, 4),
-    Conn:send(Data),
+    sockjs:send(Data, Conn),
     St.
 
 %%-----------------------------------------------------------------------------
@@ -133,14 +133,14 @@ send(#child{id=Id, id_s=User, sjs_conn=Conn, sjs_sid=Sid} = St, Key, Body) ->
             % backend (namely, misultin) crashes on encoding cyrillic utf8.
             % Cowboy isn't tested yet for this.
             %Json = sockjs_util:encode({Data}), % for jiffy
-            Json = sockjs_util:encode(Data), % for mochijson2
+            Json = mochijson2:encode(Data), % for mochijson2
             %Json = mochijson2:encode(Data),
             Json_b = iolist_to_binary(Json),
             %Json_s = binary_to_list(Json_b),
             mpln_p_debug:pr({?MODULE, 'send', ?LINE, json, Id, Sid, Data,
                              Json, Json_b}, St#child.debug, run, 6),
             Msg = Json_b, % for sockjs
-            Conn:send(Msg),
+            sockjs:send(Msg, Conn),
             St;
         false ->
             St
@@ -377,7 +377,7 @@ proceed_process_auth_resp(#child{id=Id} = St, Body) ->
 %% @doc decodes json data
 %%
 get_json_body(Body) ->
-    case catch sockjs_util:decode(Body) of
+    case catch mochijson2:decode(Body) of
         {ok, {List}} when is_list(List) ->
             List;
         {ok, Data} ->

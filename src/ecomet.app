@@ -1,7 +1,7 @@
 {application, ecomet, [
     {description, "ecomet server"},
     {id, "ecomet"},
-    {vsn, "1.4.3"},
+    {vsn, "1.5.0"},
     {modules, [
         ecomet_conf,
         ecomet_conf_rabbit,

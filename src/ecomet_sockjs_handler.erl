@@ -34,7 +34,12 @@
 %%% Exports
 %%%----------------------------------------------------------------------------
 
--export([start/1, dispatcher/2]).
+-export([
+         start/1,
+         init/3,
+         handle/2,
+         terminate/2
+        ]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -63,177 +68,99 @@ start(#csr{sockjs_config=Sc} = C) ->
     application:start(sockjs),
     {ok, HttpImpl} = application:get_env(sockjs, http_impl),
     case HttpImpl of
-        misultin ->
-            Fh  = fun(X) -> misultin_loop(C, X) end,
-            Fws = fun(X) -> misultin_ws_loop(C, X) end,
-            {ok, _} = misultin:start_link([{loop,        Fh},
-                                           {ws_loop,     Fws},
-                                           {ws_autoexit, false},
-                                           {port,        Port}]);
         cowboy ->
-            application:start(cowboy),
-            Fn = fun(X1, X2) ->
-                         service_echo(C, X1, X2)
-                 end,
-            StateEcho = sockjs_handler:init_state(
-                          Base_p,
-                          Fn,
-                          [{cookie_needed, true},
-                           {response_limit, 4096}]),
-            VRoutes = [{[Base, '...'], sockjs_cowboy_handler, StateEcho},
-                       {'_', ?MODULE, []}],
-            Routes = [{'_',  VRoutes}], % any vhost
-
-            cowboy:start_listener(http, 100,
-                                  cowboy_tcp_transport, [{port,     Port}],
-                                  cowboy_http_protocol, [{dispatch, Routes}])
+            prepare_cowboy(C, Port, Base, Base_p)
     end,
     mpln_p_debug:pr({?MODULE, 'init done', ?LINE, Port}, C#csr.debug, run, 1),
     ok.
 
-%%-----------------------------------------------------------------------------
-%%
-%% @doc returns tag (must match with the tag on a client's side) and fun for
-%% handling data that comes from sockjs
-%% @since 2012-01-17 18:39
-%%
--spec dispatcher(atom(), undefined | string()) -> [{atom(), fun()}].
 
-dispatcher(Tag, Sid) ->
-    Fb = fun(Conn, Info) ->
-                 bcast(Sid, Conn, Info)
-         end,
-    [
-     {Tag, Fb}
-    ].
+%%%----------------------------------------------------------------------------
+%%% Callbacks for cowboy
+%%%----------------------------------------------------------------------------
+
+init({_Any, http}, Req, []) ->
+    error_logger:info_report({?MODULE, 'init http', ?LINE, _Any, Req}),
+    {ok, Req, []}.
+
+handle(Req, State) ->
+    {Path, Req1} = cowboy_http_req:path(Req),
+    error_logger:info_report({?MODULE, 'handle1', ?LINE, Path, Req1, State}),
+    case Path of
+        [<<"echo.html">> = H] ->
+            error_logger:info_report({?MODULE, 'handle1 echo', ?LINE}),
+            static(Req1, H, State);
+        _ ->
+            error_logger:info_report({?MODULE, 'handle1 other', ?LINE}),
+            {ok, Req2} = cowboy_http_req:reply(404, [],
+                         <<"404 - Nothing here (via sockjs-erlang fallback)\n">>, Req1),
+            {ok, Req2, State}
+    end.
+
+terminate(_Req, _State) ->
+    error_logger:info_report({?MODULE, 'terminate', ?LINE, _Req, _State}),
+    ok.
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
 %%
-%% @doc handler of misultin's requests
+%% @doc handler for static requests. Used for debug only.
 %%
-misultin_loop(C, Req) ->
-    try
-        handle(C, {misultin, Req})
-    catch A:B ->
-            mpln_p_debug:pr({?MODULE, 'misultin_loop', ?LINE,
-                             A, B, erlang:get_stacktrace()},
-                            C#csr.debug, run, 1),
-            Req:respond(500, [], "500")
-    end.
-
-%%
-%% @doc handler of misultin's web sockets
-%%
-misultin_ws_loop(C, Ws) ->
-    {Receive, _} = ws_handle(C, {misultin, Ws}),
-    sockjs_http:misultin_ws_loop(Ws, Receive).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc common handler of http requests
-%%
-handle(#csr{sockjs_config=Sc} = C, Req) ->
-    mpln_p_debug:pr({?MODULE, 'handle', ?LINE}, C#csr.debug, http, 2),
-    mpln_p_debug:pr({?MODULE, 'handle', ?LINE, Req}, C#csr.debug, http, 4),
-    {Path0, Req1} = sockjs_http:path(Req),
-    Path = clean_path(Path0),
-    Sid = get_sid(C, Path),
-    Tag = proplists:get_value(tag, Sc),
-    case sockjs_filters:handle_req(
-           Req1, Path, ecomet_sockjs_handler:dispatcher(Tag, Sid)) of
-        nomatch ->
-            static(Req1, Path);
-        Req2    ->
-            mpln_p_debug:pr({?MODULE, 'handle', ?LINE, 'req2', Sid, Path, Tag},
-                            C#csr.debug, http, 3),
-            Req2
-    end.
-
-%%
-%% @doc common handler of web sockets
-%%
-ws_handle(#csr{sockjs_config=Sc} = C, Req) ->
-    mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE}, C#csr.debug, http, 2),
-    mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, Req}, C#csr.debug, http, 4),
-    {Path0, Req1} = sockjs_http:path(Req),
-    Path = clean_path(Path0),
-    Sid = get_sid(C, Path),
-    Tag = proplists:get_value(tag, Sc),
-    mpln_p_debug:pr({?MODULE, 'ws_handle', ?LINE, 'req2', Sid, Path, Tag},
-                    C#csr.debug, http, 3),
-    {Receive, _, _, _} = sockjs_filters:dispatch('GET', Path,
-                             ecomet_sockjs_handler:dispatcher(Tag, Sid)),
-    {Receive, Req1}.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc handler for static requests
-%%
-static(Req, Path) ->
-    %% TODO unsafe
+static(Req, Path, State) ->
+    error_logger:info_report({?MODULE, 'static', ?LINE, Path, State, Req}),
     LocalPath = filename:join([module_path(), "priv/www", Path]),
     case file:read_file(LocalPath) of
         {ok, Contents} ->
-            sockjs_http:reply(200, [], Contents, Req);
-        {error, _} ->
-            sockjs_http:reply(404, [], "", Req)
+            error_logger:info_report({?MODULE, 'static ok', ?LINE, LocalPath}),
+            {ok, Req2} = cowboy_http_req:reply(200, [{<<"Content-Type">>,
+                "text/html"}], Contents, Req),
+            {ok, Req2, State};
+        {error, Reason} ->
+            error_logger:info_report({?MODULE, 'static error', ?LINE, LocalPath, Reason}),
+            {ok, Req2} = cowboy_http_req:reply(404, [],
+                         <<"404 - Nothing here (via sockjs-erlang fallback)\n">>, Req),
+            {ok, Req2, State}
     end.
 
 module_path() ->
     {file, Here} = code:is_loaded(?MODULE),
     filename:dirname(filename:dirname(Here)).
 
-clean_path("/")         -> "index.html";
-clean_path("/" ++ Path) -> Path.
-
 %%-----------------------------------------------------------------------------
 %%
-%% @doc removes leading tokens that are not related to a session id
+%% @doc handler of sockjs messages: init, recv, closed.
 %%
--spec get_sid(#csr{}, string()) -> undefined | string().
+service_echo(C, Conn, {recv, Data}) ->
+    mpln_p_debug:pr({?MODULE, 'service_echo recv', ?LINE, Conn, Data},
+                    C#csr.debug, run, 4),
+    Sid = Conn,
+    ecomet_server:sjs_msg(Sid, Conn, Data),
+    ok;
 
-get_sid(#csr{sockjs_config=Sc}, Path) ->
-    Ignore = proplists:get_value(sid_ignore_tokens, Sc, 2),
-    case string:tokens(Path, "/") of
-        L when is_list(L) andalso length(L) > Ignore ->
-            lists:nth(Ignore + 1, L);
-        _ ->
-            undefined
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc handler for start/stop/data requests that come from sockjs
-%%
--spec bcast(undefined | string(), any(), init | closed | {recv, any()}) -> ok.
-
-bcast(Sid, Conn, init) ->
+service_echo(C, Conn, init) ->
+    mpln_p_debug:pr({?MODULE, 'service_echo init', ?LINE, Conn},
+                    C#csr.debug, run, 3),
+    Sid = Conn,
     ecomet_server:sjs_add(Sid, Conn),
     ok;
 
-bcast(Sid, Conn, closed) ->
+service_echo(C, Conn, closed) ->
+    mpln_p_debug:pr({?MODULE, 'service_echo closed', ?LINE, Conn},
+                    C#csr.debug, run, 3),
+    Sid = Conn,
     ecomet_server:sjs_del(Sid, Conn),
     ok;
 
-bcast(Sid, Conn, {recv, Data}) ->
-    ecomet_server:sjs_msg(Sid, Conn, Data),
-    ok.
-
-%%-----------------------------------------------------------------------------
-service_echo(C, Conn, {recv, Data}) ->
-    error_logger:info_report({?MODULE, 'service_echo recv', ?LINE, Conn, Data}),
-    mpln_p_debug:pr({?MODULE, 'service_echo recv', ?LINE, Conn, Data},
-                    C#csr.debug, run, 4),
-    sockjs:send(Data, Conn);
-
 service_echo(C, _Conn, _Data) ->
     mpln_p_debug:pr({?MODULE, 'service_echo other', ?LINE, _Conn, _Data},
-                    C#csr.debug, run, 4),
+                    C#csr.debug, run, 2),
     ok.
 
 %%-----------------------------------------------------------------------------
+%%
+%% @doc creates base path from the configured tag
+%%
 -spec prepare_base(list()) -> {binary(), binary()}.
 
 prepare_base(List) ->
@@ -241,5 +168,29 @@ prepare_base(List) ->
     Base = mpln_misc_web:make_binary(Tag),
     Base_p = << <<"/">>/binary, Base/binary>>,
     {Base, Base_p}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc prepares cowboy
+%%
+-spec prepare_cowboy(#csr{}, non_neg_integer(), binary(), binary()) -> ok.
+
+prepare_cowboy(C, Port, Base, Base_p) ->
+    application:start(cowboy),
+    Fn = fun(X1, X2) ->
+                 service_echo(C, X1, X2)
+         end,
+    StateEcho = sockjs_handler:init_state(
+                  Base_p,
+                  Fn,
+                  [{cookie_needed, true},
+                   {response_limit, 4096}]),
+    VRoutes = [{[Base, '...'], sockjs_cowboy_handler, StateEcho},
+               {'_', ?MODULE, []}],
+    Routes = [{'_',  VRoutes}], % any vhost
+
+    cowboy:start_listener(http, 100,
+                          cowboy_tcp_transport, [{port,     Port}],
+                          cowboy_http_protocol, [{dispatch, Routes}]).
 
 %%-----------------------------------------------------------------------------
