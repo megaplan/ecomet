@@ -66,11 +66,7 @@ start(#csr{sockjs_config=Sc} = C) ->
     Port = proplists:get_value(port, Sc),
     {Base, Base_p} = prepare_base(Sc),
     application:start(sockjs),
-    {ok, HttpImpl} = application:get_env(sockjs, http_impl),
-    case HttpImpl of
-        cowboy ->
-            prepare_cowboy(C, Port, Base, Base_p)
-    end,
+    prepare_cowboy(C, Port, Base, Base_p),
     mpln_p_debug:pr({?MODULE, 'init done', ?LINE, Port}, C#csr.debug, run, 1),
     ok.
 
@@ -87,8 +83,9 @@ handle(Req, State) ->
     {Path, Req1} = cowboy_http_req:path(Req),
     error_logger:info_report({?MODULE, 'handle1', ?LINE, Path, Req1, State}),
     case Path of
-        [<<"echo.html">> = H] ->
-            error_logger:info_report({?MODULE, 'handle1 echo', ?LINE}),
+        [<<"ecomet.html">> = H] ->
+            %% FIXME: this branch is for debug only
+            error_logger:info_report({?MODULE, 'handle1 ecomet', ?LINE}),
             static(Req1, H, State);
         _ ->
             error_logger:info_report({?MODULE, 'handle1 other', ?LINE}),
@@ -180,11 +177,15 @@ prepare_cowboy(C, Port, Base, Base_p) ->
     Fn = fun(X1, X2) ->
                  service_echo(C, X1, X2)
          end,
+    Flogger = fun(_Service, Req, _Type) ->
+                      flogger(C, _Service, Req, _Type)
+              end,
     StateEcho = sockjs_handler:init_state(
                   Base_p,
                   Fn,
                   [{cookie_needed, true},
-                   {response_limit, 4096}]),
+                   {response_limit, 4096},
+                   {logger, Flogger}]),
     VRoutes = [{[Base, '...'], sockjs_cowboy_handler, StateEcho},
                {'_', ?MODULE, []}],
     Routes = [{'_',  VRoutes}], % any vhost
@@ -192,5 +193,14 @@ prepare_cowboy(C, Port, Base, Base_p) ->
     cowboy:start_listener(http, 100,
                           cowboy_tcp_transport, [{port,     Port}],
                           cowboy_http_protocol, [{dispatch, Routes}]).
+
+%%-----------------------------------------------------------------------------
+flogger(C, _Service, Req, _Type) ->
+    {LongPath, Req1} = sockjs_http:path(Req),
+    {Method, Req2}   = sockjs_http:method(Req1),
+    mpln_p_debug:pr(
+      {?MODULE, 'flogger', ?LINE, _Type, Method, LongPath, _Service, Req},
+      C#csr.debug, http, 6),
+    Req2.
 
 %%-----------------------------------------------------------------------------
