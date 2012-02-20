@@ -64,18 +64,18 @@ init([List]) ->
     mpln_p_debug:pr({?MODULE, init, ?LINE, New}, C#child.debug, run, 6),
     mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web},
         C#child.debug, run, 2),
-    {ok, New, ?T}.
+    {ok, New, New#child.economize}.
 
 %%-----------------------------------------------------------------------------
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 
 handle_call(status, _From, St) ->
-    {reply, St, St};
+    {reply, St, St, St#child.economize};
 
 handle_call(_N, _From, St) ->
     mpln_p_debug:pr({?MODULE, call_other, ?LINE, _N}, St#child.debug, run, 2),
-    {reply, {error, unknown_request}, St}.
+    {reply, {error, unknown_request}, St, St#child.economize}.
 
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
@@ -88,7 +88,7 @@ handle_cast({data_from_server, Data}, #child{id=Id} = St) ->
                     St#child.debug, web_msg, 6),
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
     New = update_idle(St_r),
-    {noreply, New};
+    {noreply, New, New#child.economize};
 
 handle_cast({data_from_sjs, Data}, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id},
@@ -97,7 +97,7 @@ handle_cast({data_from_sjs, Data}, #child{id=Id} = St) ->
                     St#child.debug, web_msg, 6),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
     New = update_idle(St_r),
-    {noreply, New};
+    {noreply, New, New#child.economize};
 
 handle_cast({data_from_sio, Data}, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE, Id},
@@ -106,12 +106,12 @@ handle_cast({data_from_sio, Data}, #child{id=Id} = St) ->
                     St#child.debug, web_msg, 6),
     St_r = ecomet_conn_server_sio:process_sio(St, Data),
     New = update_idle(St_r),
-    {noreply, New};
+    {noreply, New, New#child.economize};
 
 handle_cast(_N, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, cast_other, ?LINE, Id, _N},
         St#child.debug, run, 2),
-    {noreply, St}.
+    {noreply, St, St#child.economize}.
 
 %%-----------------------------------------------------------------------------
 terminate(_, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
@@ -135,7 +135,7 @@ handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req,
                     St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),
     New = send_rabbit_msg(St, Req),
-    {noreply, New};
+    {noreply, New, New#child.economize};
 
 %% @doc amqp setup consumer confirmation. In fact, unnecessary for case
 %% of list of consumers
@@ -143,25 +143,25 @@ handle_info(#'basic.consume_ok'{consumer_tag = Tag}, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Id, Tag},
                     St#child.debug, run, 3),
     New = St#child{conn=(St#child.conn)#conn{consumer=ok}},
-    {noreply, New};
+    {noreply, New, New#child.economize};
 
 handle_info(timeout, St) ->
     New = periodic_check(St),
-    {noreply, New};
+    {noreply, New, New#child.economize};
 
 handle_info(idle_timeout, St) ->
     New = check_idle(St),
-    {noreply, New};
+    {noreply, New, New#child.economize};
 
 handle_info(periodic_check, St) ->
     New = periodic_check(St),
-    {noreply, New};
+    {noreply, New, New#child.economize};
 
 %% @doc unknown info
 handle_info(_N, #child{id=Id} = St) ->
     mpln_p_debug:pr({?MODULE, info_other, ?LINE, Id, _N},
                     St#child.debug, run, 2),
-    {noreply, St}.
+    {noreply, St, St#child.economize}.
 
 %%-----------------------------------------------------------------------------
 code_change(_Old_vsn, State, _Extra) ->

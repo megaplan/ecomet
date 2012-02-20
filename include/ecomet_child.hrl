@@ -39,6 +39,7 @@
     event,
     timer :: reference(), % timer for periodic checks
     timer_idle :: reference(), % timer for idle checks
+    economize  :: hibernate | infinity, % gen_server default policy
     stat % #stat{}
 }).
 

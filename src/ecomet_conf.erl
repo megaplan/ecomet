@@ -80,6 +80,7 @@ get_config(Src) ->
 %%
 get_child_config(List) ->
     #child{
+        economize = get_economize(List),
         user_data_as_auth_host = proplists:get_value(user_data_as_auth_host,
                                                      List, false),
         sio_auth_recheck = proplists:get_value(
@@ -110,6 +111,21 @@ get_child_config(List) ->
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
+%%
+%% @doc get the default gen_server policy for economizing - either memory
+%% or cpu
+%%
+get_economize(List) ->
+    case proplists:get_value(economize, List) of
+        memory ->
+            hibernate;
+        cpu ->
+            infinity;
+        _ ->
+            hibernate
+    end.
+
+%%-----------------------------------------------------------------------------
 %%
 %% @doc extracts event and converts it to binary
 %%
