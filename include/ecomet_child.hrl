@@ -38,6 +38,7 @@
     user_data_as_auth_host :: undefined | boolean(),
     event,
     timer :: reference(), % timer for periodic checks
+    timer_idle :: reference(), % timer for idle checks
     stat % #stat{}
 }).
 

@@ -149,6 +149,10 @@ handle_info(timeout, St) ->
     New = periodic_check(St),
     {noreply, New};
 
+handle_info(idle_timeout, St) ->
+    New = check_idle(St),
+    {noreply, New};
+
 handle_info(periodic_check, St) ->
     New = periodic_check(St),
     {noreply, New};
@@ -215,8 +219,20 @@ prepare_all(C) ->
     Cid = prepare_id(Cq),
     Cst = prepare_stat(Cid),
     Cr = prepare_rabbit(Cst),
+    Ci = prepare_idle_check(Cr),
     Ref = erlang:send_after(?T, self(), periodic_check),
-    Cr#child{timer=Ref}.
+    Ci#child{timer=Ref}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc prepare timer for idle checks
+%%
+prepare_idle_check(#child{idle_timeout=T} = C) when is_integer(T) ->
+    Iref = erlang:send_after(T * 1000, self(), idle_timeout),
+    C#child{timer_idle=Iref};
+
+prepare_idle_check(C) ->
+    C.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -269,7 +285,6 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
 periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref} =
                State) ->
     mpln_misc_run:cancel_timer(Ref),
-    check_idle(State),
     Qnew = clean_queue(Q, Dur, Max),
     St_c = State#child{queue=Qnew},
     St_a = check_auth(St_c),
@@ -429,21 +444,25 @@ update_idle(St) ->
 %% configured limit. Does not check socket-io processes. Does not check
 %% in case of undefined limit
 %%
-check_idle(#child{type='sio'}) ->
-    ok;
+check_idle(#child{type='sio'} = St) ->
+    St;
 
-check_idle(#child{idle_timeout=undefined}) ->
-    ok;
+check_idle(#child{idle_timeout=undefined} = St) ->
+    St;
 
-check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T} = St) ->
+check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T,
+                 timer_idle=Ref} = St) ->
+    mpln_misc_run:cancel_timer(Ref),
     Now = now(),
     Delta = timer:now_diff(Now, T),
     if Delta > Idle * 1000000 ->
             mpln_p_debug:pr({?MODULE, "stop on idle", ?LINE, Id, Id_web},
                             St#child.debug, run, 2),
-            gen_server:cast(self(), stop);
+            gen_server:cast(self(), stop),
+            St#child{timer_idle=undefined};
        true ->
-            ok
+            Iref = erlang:send_after(Idle * 1000, self(), idle_timeout),
+            St#child{timer_idle=Iref}
     end.
 
 %%-----------------------------------------------------------------------------
