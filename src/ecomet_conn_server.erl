@@ -213,14 +213,14 @@ stop(Pid) ->
 %%
 -spec prepare_all(#child{}) -> #child{}.
 
-prepare_all(C) ->
+prepare_all(#child{sio_auth_recheck=T} = C) ->
     Now = now(),
     Cq = prepare_queue(C#child{start_time=Now, last_use=Now}),
     Cid = prepare_id(Cq),
     Cst = prepare_stat(Cid),
     Cr = prepare_rabbit(Cst),
     Ci = prepare_idle_check(Cr),
-    Ref = erlang:send_after(?T, self(), periodic_check),
+    Ref = erlang:send_after(T * 1000, self(), periodic_check),
     Ci#child{timer=Ref}.
 
 %%-----------------------------------------------------------------------------
@@ -282,8 +282,8 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
 %%
 -spec periodic_check(#child{}) -> #child{}.
 
-periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref} =
-               State) ->
+periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref,
+                      sio_auth_recheck=T} = State) ->
     mpln_misc_run:cancel_timer(Ref),
     Qnew = clean_queue(Q, Dur, Max),
     St_c = State#child{queue=Qnew},
@@ -291,7 +291,7 @@ periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref} =
     St_sent = send_queued_msg(St_a),
     mpln_p_debug:pr({?MODULE, periodic_check, ?LINE, Id, St_sent},
                     St_sent#child.debug, run, 7),
-    Nref = erlang:send_after(?T, self(), periodic_check),
+    Nref = erlang:send_after(T * 1000, self(), periodic_check),
     St_sent#child{timer=Nref}.
 
 %%-----------------------------------------------------------------------------
