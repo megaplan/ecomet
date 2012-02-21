@@ -119,7 +119,7 @@ terminate(_, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
     Res_q = ecomet_rb:teardown_queues(Conn),
     ecomet_server:del_child(self(), Type, Id),
     if Type == 'sjs' ->
-            catch Sconn:close(3000, "conn. closed");
+            catch sockjs:close(3000, "conn. closed", Sconn);
        true ->
             ok
     end,

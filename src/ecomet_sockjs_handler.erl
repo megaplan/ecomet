@@ -198,9 +198,10 @@ prepare_cowboy(C, Port, Base, Base_p) ->
 flogger(C, _Service, Req, _Type) ->
     {LongPath, Req1} = sockjs_http:path(Req),
     {Method, Req2}   = sockjs_http:method(Req1),
-    mpln_p_debug:pr(
-      {?MODULE, 'flogger', ?LINE, _Type, Method, LongPath, _Service, Req},
-      C#csr.debug, http, 6),
+    mpln_p_debug:pr({?MODULE, 'flogger', ?LINE, _Type, Method, LongPath},
+                    C#csr.debug, http, 3),
+    mpln_p_debug:pr({?MODULE, 'flogger', ?LINE, _Service, Req},
+                    C#csr.debug, http, 6),
     Req2.
 
 %%-----------------------------------------------------------------------------
