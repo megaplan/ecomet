@@ -495,7 +495,7 @@ add_msg_stat(#csr{stat=#stat{rabbit=Rb_stat} = Stat} = State, Tag) ->
 %% @doc deletes sockjs related process from a list of children and terminates
 %% them
 %%
-del_sjs_pid2(#csr{sjs_children=L} = St, Ref, Conn) ->
+del_sjs_pid2(St, Ref, Conn) ->
     % gives an exception when trying to close already closed session
     Res = (catch sockjs:close(3000, "conn. closed.", Conn)),
     mpln_p_debug:pr({?MODULE, 'del_sjs_pid2', ?LINE, Ref, Conn, Res},
@@ -503,20 +503,21 @@ del_sjs_pid2(#csr{sjs_children=L} = St, Ref, Conn) ->
     F = fun(#chi{sjs_sid=X}) ->
                 X == Ref
         end,
-    {Del, Cont} = lists:partition(F, L),
-    mpln_p_debug:pr({?MODULE, 'del_sjs_pid2', ?LINE, Del, Cont},
-                    St#csr.debug, run, 5),
-    terminate_sjs_children(St, Del),
-    St#csr{sjs_children = Cont}.
+    proceed_del_sjs_pid(St, F).
 
-del_sjs_pid(#csr{sjs_children=L} = St, Pid, Ref) ->
-    mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Ref, Pid},
+del_sjs_pid(St, _Pid, Ref) ->
+    mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Ref, _Pid},
                     St#csr.debug, run, 2),
     F = fun(#chi{id=Id}) ->
                 Id == Ref
         end,
+    proceed_del_sjs_pid(St, F).
+
+-spec proceed_del_sjs_pid(#csr{}, fun()) -> #csr{}.
+
+proceed_del_sjs_pid(#csr{sjs_children=L} = St, F) ->
     {Del, Cont} = lists:partition(F, L),
-    mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Del, Cont},
+    mpln_p_debug:pr({?MODULE, 'proceed_del_sjs_pid', ?LINE, Del, Cont},
                     St#csr.debug, run, 5),
     terminate_sjs_children(St, Del),
     St#csr{sjs_children = Cont}.
