@@ -46,8 +46,10 @@
 -export([sjs_broadcast_msg/1]).
 -export([get_stat_raw/0]).
 -export([
-    reload_config_signal/0
-    ]).
+    reload_config_signal/0,
+         get_stat_procs/0,
+         get_stat_procs_mem/0
+        ]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -83,8 +85,8 @@ handle_call({sjs_add, Sid, Conn}, _From, St) ->
 
 % @doc returns accumulated statistic as a list of tuples
 % {atom(), {dict(), dict(), dict()}}
-handle_call({get_stat, Tag}, _From, #csr{stat=Stat} = St) ->
-    Res = prepare_stat_result(Stat, Tag),
+handle_call({get_stat, Tag}, _From, St) ->
+    Res = prepare_stat_result(St, Tag),
     {reply, Res, St};
 
 handle_call(status, _From, St) ->
@@ -268,6 +270,12 @@ add_rabbit_inc_other_stat() ->
 %%-----------------------------------------------------------------------------
 get_stat_raw() ->
     gen_server:call(?MODULE, {get_stat, raw}).
+
+get_stat_procs() ->
+    gen_server:call(?MODULE, {get_stat, procs}).
+
+get_stat_procs_mem() ->
+    gen_server:call(?MODULE, {get_stat, procs_mem}).
 
 %%-----------------------------------------------------------------------------
 reload_config_signal() ->
@@ -719,8 +727,25 @@ del_child_pid(St, Pid, 'sjs', Ref) ->
 %% @doc returns accumulated statistic as a list of tuples
 %% {atom(), dictionary()}, where dictionary is a dict of {time, tag} -> amount
 %%
-prepare_stat_result(Stat, raw) ->
-    [{wsock, Stat#stat.wsock}, {rabbit, Stat#stat.rabbit}].
+prepare_stat_result(#csr{stat=Stat}, raw) ->
+    [{wsock, Stat#stat.wsock}, {rabbit, Stat#stat.rabbit}];
+
+%%
+%% @doc returns number of running comet processes
+%%
+prepare_stat_result(#csr{sjs_children=Ch}, procs) ->
+    length(Ch);
+
+%%
+%% @doc returns number of running comet processes and their memory
+%% consumption. This does not include memory of sockjs and webserver
+%% processes.
+%%
+prepare_stat_result(#csr{sjs_children=Ch}, procs_mem) ->
+    Len = length(Ch),
+    Pids = [X#chi.pid || X <- Ch],
+    Sum = estat_misc:fetch_sum_pids_memory(Pids),
+    {Len, Sum}.
 
 %%-----------------------------------------------------------------------------
 %%
