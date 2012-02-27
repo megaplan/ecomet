@@ -81,6 +81,8 @@ get_config(Src) ->
 get_child_config(List) ->
     #child{
         economize = get_economize(List),
+        deep_memory_economize = proplists:get_value(deep_memory_economize,
+                                                    List, false),
         user_data_as_auth_host = proplists:get_value(user_data_as_auth_host,
                                                      List, false),
         sio_auth_recheck = proplists:get_value(

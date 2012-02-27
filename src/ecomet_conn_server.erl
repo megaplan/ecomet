@@ -88,6 +88,7 @@ handle_cast({data_from_server, Data}, #child{id=Id} = St) ->
                     St#child.debug, web_msg, 6),
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
     New = update_idle(St_r),
+    call_gc(New),
     {noreply, New, New#child.economize};
 
 handle_cast({data_from_sjs, Data}, #child{id=Id} = St) ->
@@ -97,6 +98,7 @@ handle_cast({data_from_sjs, Data}, #child{id=Id} = St) ->
                     St#child.debug, web_msg, 6),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
     New = update_idle(St_r),
+    call_gc(New),
     {noreply, New, New#child.economize};
 
 handle_cast({data_from_sio, Data}, #child{id=Id} = St) ->
@@ -477,5 +479,32 @@ check_auth(#child{sio_auth_last=Last, sio_auth_recheck=Interval} = St) ->
        true ->
             St
     end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc call garbage collect for sockjs and cowboy processes
+%% if deep_memory_economize in the config is true
+%%
+call_gc(#child{deep_memory_economize=true,
+                 sjs_conn={sockjs_session,{_, Pid}}}) when is_pid(Pid) ->
+    erlang:garbage_collect(Pid),
+    case process_info(Pid, links) of
+        {links, List} ->
+            Cowboy = fetch_cowboy(List),
+            [erlang:garbage_collect(X) || X <- Cowboy];
+        _ ->
+            ok
+    end;
+
+call_gc(_) ->
+    ok.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc find cowboy processes
+%%
+fetch_cowboy(List) ->
+    Info_list = [{X, process_info(X, initial_call)} || X <- List],
+    [X || {X, {initial_call,{cowboy_http_protocol,init,_}}} <- Info_list].
 
 %%-----------------------------------------------------------------------------

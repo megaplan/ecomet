@@ -40,6 +40,7 @@
     timer :: reference(), % timer for periodic checks
     timer_idle :: reference(), % timer for idle checks
     economize  :: hibernate | infinity, % gen_server default policy
+    deep_memory_economize = true :: boolean(), % call gc on linked cowboy pids
     stat % #stat{}
 }).
 
