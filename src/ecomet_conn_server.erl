@@ -64,6 +64,7 @@ init([List]) ->
     mpln_p_debug:pr({?MODULE, init, ?LINE, New}, C#child.debug, run, 6),
     mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web},
         C#child.debug, run, 2),
+    erpher_et:trace_me(45, ?MODULE, New#child.id, init, New#child.sjs_sid),
     {ok, New, New#child.economize}.
 
 %%-----------------------------------------------------------------------------
@@ -81,21 +82,23 @@ handle_call(_N, _From, St) ->
 handle_cast(stop, St) ->
     {stop, normal, St};
 
-handle_cast({data_from_server, Data}, #child{id=Id} = St) ->
+handle_cast({data_from_server, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
     mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id},
         St#child.debug, run, 2),
     mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id, Data},
                     St#child.debug, web_msg, 6),
+    erpher_et:trace_me(50, {?MODULE, Id}, Sid, data_from_server, Data),
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
     New = update_idle(St_r),
     call_gc(New),
     {noreply, New, New#child.economize};
 
-handle_cast({data_from_sjs, Data}, #child{id=Id} = St) ->
+handle_cast({data_from_sjs, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
     mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id},
         St#child.debug, run, 2),
     mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id, Data},
                     St#child.debug, web_msg, 6),
+    erpher_et:trace_me(50, {?MODULE, Id}, Sid, data_from_sjs, Data),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
     New = update_idle(St_r),
     call_gc(New),
@@ -117,6 +120,7 @@ handle_cast(_N, #child{id=Id} = St) ->
 
 %%-----------------------------------------------------------------------------
 terminate(_, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
+    erpher_et:trace_me(45, ?MODULE, Id, terminate, Sconn),
     Res_t = ecomet_rb:teardown_tags(Conn),
     Res_q = ecomet_rb:teardown_queues(Conn),
     ecomet_server:del_child(self(), Type, Id),
@@ -133,6 +137,7 @@ terminate(_, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
 %% @doc message from amqp
 handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req,
             #child{id=Id} = St) ->
+    erpher_et:trace_me(30, ?MODULE, Id, 'basic.deliver', Req),
     mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, Req},
                     St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),

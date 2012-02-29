@@ -132,6 +132,7 @@ bcast(C, Conn, {recv, Data}) ->
     mpln_p_debug:pr({?MODULE, 'bcast recv', ?LINE, Conn, self(), Data},
                     C#csr.debug, run, 4),
     Sid = Conn,
+    erpher_et:trace_me(40, ?MODULE, ecomet_server, sockjs_recv, {Sid, Data}),
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok;
 
@@ -139,6 +140,7 @@ bcast(C, Conn, init) ->
     mpln_p_debug:pr({?MODULE, 'bcast init', ?LINE, Conn, self()},
                     C#csr.debug, run, 3),
     Sid = Conn,
+    erpher_et:trace_me(45, ?MODULE, ecomet_server, sockjs_init, Sid),
     ecomet_server:sjs_add(Sid, Conn),
     ok;
 
@@ -146,10 +148,13 @@ bcast(C, Conn, closed) ->
     mpln_p_debug:pr({?MODULE, 'bcast closed', ?LINE, Conn, self()},
                     C#csr.debug, run, 3),
     Sid = Conn,
+    erpher_et:trace_me(45, ?MODULE, ecomet_server, sockjs_closed, Sid),
     ecomet_server:sjs_del(Sid, Conn),
     ok;
 
 bcast(C, _Conn, _Data) ->
+    erpher_et:trace_me(50, ?MODULE, undefined, sockjs_unknown,
+        {_Conn, _Data}),
     mpln_p_debug:pr({?MODULE, 'bcast other', ?LINE, _Conn, self(), _Data},
                     C#csr.debug, run, 2),
     ok.

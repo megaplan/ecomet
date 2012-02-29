@@ -80,6 +80,7 @@ handle_call({add_sio, Mgr, Handler, Client, Sid}, _From, St) ->
 handle_call({sjs_add, Sid, Conn}, _From, St) ->
     mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE, Sid},
                     St#csr.debug, run, 2),
+    erpher_et:trace_me(45, ?MODULE, undefined, sockjs_add_child, Sid),
     {Res, New} = add_sjs_child(St, Sid, Conn),
     {reply, Res, New};
 
@@ -116,14 +117,17 @@ handle_cast({del_sio, Pid}, St) ->
     {noreply, New};
 
 handle_cast({sjs_del, Sid, Conn}, St) ->
+    erpher_et:trace_me(45, ?MODULE, undefined, sockjs_del_child, Sid),
     New = del_sjs_pid2(St, Sid, Conn),
     {noreply, New};
 
 handle_cast({sjs_msg, Sid, Conn, Data}, St) ->
+    erpher_et:trace_me(40, ?MODULE, undefined, sockjs_message, {Sid, Data}),
     New = process_sjs_msg(St, Sid, Conn, Data),
     {noreply, New};
 
 handle_cast({sjs_broadcast_msg, Data}, St) ->
+    erpher_et:trace_me(40, ?MODULE, undefined, sockjs_broadcast_message, Data),
     New = process_sjs_broadcast_msg(St, Data),
     {noreply, New};
 
@@ -345,12 +349,18 @@ add_child(St, Ext_pars) ->
     Type = proplists:get_value(type, Ext_pars),
     case Res of
         {ok, Pid} ->
+            erpher_et:trace_me(45, ?MODULE, undefined, 'start_child_ok',
+                {Pars, Pid}),
             New_st = add_child_list(St, Type, Pid, Id, Ext_pars),
             {Res, New_st};
         {ok, Pid, _Info} ->
+            erpher_et:trace_me(45, ?MODULE, undefined, 'start_child_ok',
+                {Pars, Pid}),
             New_st = add_child_list(St, Type, Pid, Id, Ext_pars),
             {Res, New_st};
         {error, Reason} ->
+            erpher_et:trace_me(50, ?MODULE, undefined, 'start_child_error',
+                {Pars, Reason}),
             mpln_p_debug:pr({?MODULE, "start child error", ?LINE, Reason},
                             St#csr.debug, child, 1),
             check_error(St, Reason)
