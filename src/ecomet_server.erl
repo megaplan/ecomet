@@ -764,6 +764,7 @@ prepare_stat_result(#csr{sjs_children=Ch}, procs_mem) ->
 -spec process_reload_config(#csr{}) -> #csr{}.
 
 process_reload_config(St) ->
+    ecomet_sockjs_handler:stop(),
     C = ecomet_conf:get_config(St),
     prepare_part(C).
 

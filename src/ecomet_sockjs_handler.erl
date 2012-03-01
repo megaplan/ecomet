@@ -36,6 +36,7 @@
 
 -export([
          start/1,
+         stop/0,
          init/3,
          handle/2,
          terminate/2
@@ -70,6 +71,9 @@ start(#csr{sockjs_config=Sc} = C) ->
     mpln_p_debug:pr({?MODULE, 'init done', ?LINE, Port}, C#csr.debug, run, 1),
     ok.
 
+stop() ->
+    application:stop(cowboy),
+    application:stop(sockjs).
 
 %%%----------------------------------------------------------------------------
 %%% Callbacks for cowboy
