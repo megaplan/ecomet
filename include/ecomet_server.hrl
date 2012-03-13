@@ -17,6 +17,7 @@
     timer :: reference(), % timer reference for periodic check
     timer_stat        :: reference(), % timer reference for periodic log stat
     log_stat_interval :: non_neg_integer(), % seconds
+    smoke_test        :: undefined | broadcast, % for smoke test
     debug
 }).
 

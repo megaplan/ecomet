@@ -149,6 +149,7 @@ make_event_bin(List) ->
 fill_config(List, Src) ->
     Child_config = proplists:get_value(child_config, List, []),
     Src#csr{
+        smoke_test = proplists:get_value(smoke_test, List),
         log_stat_interval = proplists:get_value(log_stat_interval, List,
             ?T * 120),
         rses = ecomet_conf_rabbit:stuff_rabbit_with(List),

@@ -619,6 +619,10 @@ process_sjs_broadcast_msg(#csr{sjs_children=Ch} = St, Data) ->
 %% @doc creates a handler process if it's not done yet, charges the process
 %% to do the work
 %%
+process_sjs_msg(#csr{smoke_test=broadcast} = St, _Sid, _Conn, Data) ->
+    erpher_et:trace_me(30, ?MODULE, undefined, smoke_test_broadcast, Data),
+    process_sjs_broadcast_msg(St, Data);
+
 process_sjs_msg(St, Sid, Conn, Data) ->
     mpln_p_debug:pr({?MODULE, 'process_sjs_msg', ?LINE, Sid, Conn, Data},
                     St#csr.debug, run, 4),
