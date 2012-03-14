@@ -65,9 +65,11 @@ start(#csr{sockjs_config=undefined} = C) ->
 start(#csr{sockjs_config=Sc} = C) ->
     mpln_p_debug:pr({?MODULE, 'init', ?LINE}, C#csr.debug, run, 1),
     Port = proplists:get_value(port, Sc),
+    Nb_acc = proplists:get_value(nb_acceptors, Sc, 100),
+    Max_conn = proplists:get_value(max_connections, Sc, 1024),
     {Base, Base_p} = prepare_base(Sc),
-    application:start(sockjs),
-    prepare_cowboy(C, Port, Base, Base_p),
+    Trans_opt = [{port, Port}, {max_connections, Max_conn}],
+    prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opt),
     mpln_p_debug:pr({?MODULE, 'init done', ?LINE, Port}, C#csr.debug, run, 1),
     ok.
 
@@ -179,10 +181,10 @@ prepare_base(List) ->
 %%
 %% @doc prepares cowboy
 %%
--spec prepare_cowboy(#csr{}, non_neg_integer(), binary(), binary()) -> ok.
+-spec prepare_cowboy(#csr{}, binary(), binary(), non_neg_integer(), list()) ->
+                            ok.
 
-prepare_cowboy(C, Port, Base, Base_p) ->
-    application:start(cowboy),
+prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
     Fn = fun(X1, X2) ->
                  bcast(C, X1, X2)
          end,
@@ -199,8 +201,8 @@ prepare_cowboy(C, Port, Base, Base_p) ->
                {'_', ?MODULE, []}],
     Routes = [{'_',  VRoutes}], % any vhost
 
-    cowboy:start_listener(http, 100,
-                          cowboy_tcp_transport, [{port,     Port}],
+    cowboy:start_listener(http, Nb_acc,
+                          cowboy_tcp_transport, Trans_opts,
                           cowboy_http_protocol, [{dispatch, Routes}]).
 
 %%-----------------------------------------------------------------------------
