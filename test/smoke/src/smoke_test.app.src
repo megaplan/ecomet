@@ -1,0 +1,40 @@
+{application, smoke_test, [
+    {description, "smoke_test"},
+    {id, "smoke_test"},
+    {vsn, "0.3"},
+    {modules, [
+        smoke_test_app,
+        smoke_test_child,
+        smoke_test_child_sup,
+        smoke_test_handler,
+        smoke_test_job,
+        smoke_test_misc,
+        smoke_test_req,
+        smoke_test_req_sup,
+        smoke_test_sup
+    ]},
+    {env, [
+        {host, "http://localhost:8085"},
+        {url, "/xhr"},
+        {serv_tag, "ecomet"},
+        {count, 2},
+        {hz, 1},
+        {seconds, 3},
+        {timeout, 6000}, % timeout for http request
+        {job_timeout, 12000}, % terminate job after this time
+        {heartbeat_timeout, 25100}, % timeout for http request in waiting loop
+        {log0, "log/st"},
+        {debug, [
+            {http, 1},
+            {run, 1}
+        ]}
+    ]},
+    {mod, {smoke_test_app,[]}},
+    {registered, [
+        smoke_test_handler,
+        smoke_test_supervisor,
+        smoke_test_child_supervisor
+    ]},
+    {applications, [kernel, stdlib, inets, ssl]}
+]}.
+

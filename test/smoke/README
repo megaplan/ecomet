@@ -1,0 +1,40 @@
+sort of loose port of smoke-test.coffee from sockjs to erlang
+modified for ecomet
+
+tests:
+- for number of clients from 1 to N:
+    - one session per client
+    - clients pour messages to server, receive own messages and
+      messages from others
+    - sessions are terminated after X time
+    - result: sent, received, time, speed
+
+parameters in app file:
+- host - host and port of the server. E.g. "http://localhost:8081"
+- url - part of full url after server tag, server id, session id.
+  E.g. if full url is "/echo/000/1234/xhr" then url is "/xhr"
+- serv_tag - service tag. E.g. "echo"
+- count - how many processes to spawn
+- hz - frequency for job spawning
+- seconds - duration of test in seconds
+- timeout - timeout for http request in milliseconds. E.g. 6000
+- job_timeout - terminate job after this time. Milliseconds. E.g. 10000
+- heartbeat_timeout - timeout for http request in waiting loop. SockJS
+  uses 25000 milliseconds. So use little more that that.
+
+examples:
+1)
+smoke_test_handler:st()
+
+% waiting is optional
+wait
+
+smoke_test_handler:get_stat()
+
+% if you are about to start several tests in one session then reset statistic
+smoke_test_handler:reset_stat()
+
+2)
+smoke_test_handler:st([{count, 3}, {seconds, 20}, {hz, 10}])
+wait
+smoke_test_handler:get_stat()
