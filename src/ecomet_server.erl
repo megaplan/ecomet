@@ -77,13 +77,6 @@ handle_call({add_sio, Mgr, Handler, Client, Sid}, _From, St) ->
     {Res, New} = add_sio_child(St, Mgr, Handler, Client, Sid),
     {reply, Res, New};
 
-handle_call({sjs_add, Sid, Conn}, _From, St) ->
-    mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE, Sid},
-                    St#csr.debug, run, 2),
-    erpher_et:trace_me(45, ?MODULE, undefined, sockjs_add_child, Sid),
-    {Res, New} = add_sjs_child(St, Sid, Conn),
-    {reply, Res, New};
-
 % @doc returns accumulated statistic as a list of tuples
 % {atom(), {dict(), dict(), dict()}}
 handle_call({get_stat, Tag}, _From, St) ->
@@ -114,6 +107,13 @@ handle_cast({sio_msg, Pid, Sid, Data}, St) ->
     {noreply, New};
 handle_cast({del_sio, Pid}, St) ->
     New = del_sio_pid(St, Pid),
+    {noreply, New};
+
+handle_cast({sjs_add, Sid, Conn}, St) ->
+    mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE, Sid},
+                    St#csr.debug, run, 2),
+    erpher_et:trace_me(45, ?MODULE, undefined, sockjs_add_child, Sid),
+    {_Res, New} = add_sjs_child(St, Sid, Conn),
     {noreply, New};
 
 handle_cast({sjs_del, Sid, Conn}, St) ->
@@ -184,7 +184,7 @@ stop() ->
 %% @since 2012-01-17 18:11
 %%
 sjs_add(Sid, Conn) ->
-    gen_server:call(?MODULE, {sjs_add, Sid, Conn}).
+    gen_server:cast(?MODULE, {sjs_add, Sid, Conn}).
 
 %%
 %% @doc requests for terminating a sockjs child
