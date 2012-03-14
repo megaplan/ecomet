@@ -1,0 +1,59 @@
+<erl>
+-define(TABC, "border=1 cellspacing=4 cellpadding=4 frame=border rules=all").
+% show ecomet stats: active connections, memory
+
+out(A) ->
+    {Ip, _} = A#arg.client_ip_port,
+    case Ip of
+        {127,_,_,_} ->
+            make_resp(A);
+        {192,168,_,_} ->
+            make_resp(A);
+        {10,20,30,_} ->
+            make_resp(A);
+        _ ->
+            Str = io_lib:format("forbidden ip address: ~p", [Ip]),
+            {content, "text/plain", Str}
+    end.
+
+make_resp(A) ->
+    Q = yaws_api:parse_query(A),
+    error_logger:info_report({?MODULE, make_resp, ?LINE,
+        A#arg.client_ip_port, Q}),
+    Dat = ecomet_server:get_stat_procs_mem(),
+    case proplists:get_value("t", Q) of
+        "text" ->
+            Text = make_text(Dat),
+            {content, "text/plain", Text};
+        _ ->
+            Text = make_html(Dat),
+            {content, "text/html", Text}
+    end.
+
+make_text({N, Mem}) ->
+    io_lib:format("procs: ~p, mem: ~p~n", [N, Mem])
+.
+
+make_html({N, Mem}) ->
+    [
+        "<html><body>\n<p>\n",
+        "<table ", ?TABC, ">",
+        "<tr>\n",
+        "<td>processes</td>",
+        "<td>memory</td>",
+        "</tr>\n",
+        "<tr>\n",
+        "<td>",
+        io_lib:format("~p", [N]),
+        "</td>",
+        "<td>",
+        io_lib:format("~p", [Mem]),
+        "</td>",
+        "</tr>\n",
+        "<table>\n",
+        "<p>\n",
+        "</body></html>\n"
+    ]
+.
+
+</erl>
