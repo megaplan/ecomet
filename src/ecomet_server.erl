@@ -619,6 +619,11 @@ process_sjs_broadcast_msg(#csr{sjs_children=Ch} = St, Data) ->
 %% @doc creates a handler process if it's not done yet, charges the process
 %% to do the work
 %%
+process_sjs_msg(#csr{smoke_test={random, _}} = St, Sid, _Conn, Data) ->
+    erpher_et:trace_me(30, ?MODULE, undefined, smoke_test_random, Data),
+    send_return_msg(St, Sid, Data),
+    process_sjs_multicast_msg(St, Data);
+
 process_sjs_msg(#csr{smoke_test=broadcast} = St, _Sid, _Conn, Data) ->
     erpher_et:trace_me(30, ?MODULE, undefined, smoke_test_broadcast, Data),
     process_sjs_broadcast_msg(St, Data);
@@ -771,5 +776,48 @@ process_reload_config(St) ->
     ecomet_sockjs_handler:stop(),
     C = ecomet_conf:get_config(St),
     prepare_part(C).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc find sockjs connection with given id
+%%
+find_sjs(#csr{sjs_children = Ch} = St, Sid) ->
+    case is_sjs_child_alive(St, Ch, Sid) of
+        {true, I} ->
+            {ok, I#chi.pid};
+        {false, _} ->
+            error
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc send received message back to the originator
+%%
+send_return_msg(St, Sid, Data) ->
+    case find_sjs(St, Sid) of
+        {ok, Pid} ->
+            ecomet_conn_server:data_from_sjs(Pid, Data);
+        error ->
+            ok
+    end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc send message to N random sockjs connections
+%%
+process_sjs_multicast_msg(#csr{sjs_children=[]} = St, _) ->
+    St;
+
+process_sjs_multicast_msg(#csr{smoke_test={random, N}, sjs_children=Ch} = St,
+                          Data) ->
+    New = add_msg_stat(St, 'multicast'),
+    Len = length(Ch),
+    F = fun(_) ->
+        Idx = crypto:rand_uniform(0, Len),
+        #chi{pid=Pid} = lists:nth(Idx + 1, Ch),
+        ecomet_conn_server:data_from_sjs(Pid, Data)
+    end,
+    lists:foreach(F, lists:duplicate(N, true)),
+    New.
 
 %%-----------------------------------------------------------------------------
