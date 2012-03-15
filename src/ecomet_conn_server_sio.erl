@@ -189,7 +189,7 @@ proceed_auth_msg(St, {ok, Info}, Data) ->
 proceed_auth_msg(#child{id=Id} = St, {error, Reason}, _Data) ->
     Bin = mpln_misc_web:make_term_binary(Reason),
     Short = mpln_misc_web:sub_bin(Bin),
-    ejobman_stat:add(Id, 'auth', {'http_error', Short}),
+    erpher_rt_stat:add(Id, 'auth', {'http_error', Short}),
     mpln_p_debug:pr({?MODULE, proceed_auth_msg, ?LINE, error, Id, Reason},
                     St#child.debug, run, 1),
     ecomet_conn_server:stop(self()),
@@ -206,7 +206,7 @@ proceed_auth_msg(#child{id=Id} = St, {error, Reason}, _Data) ->
 proceed_type_msg(#child{id=Id, id_s=undefined} = St, _, _, _) ->
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, 'undefined id_s', Id},
                     St#child.debug, run, 2),
-    ejobman_stat:add(Id, 'auth', {'error', 'undefined user id'}),
+    erpher_rt_stat:add(Id, 'auth', {'error', 'undefined user id'}),
     ecomet_conn_server:stop(self()),
     St;
 
@@ -264,7 +264,7 @@ process_auth_resp(_, _) ->
 proceed_process_auth_resp(#child{id=Id} = St, Body) ->
     case get_json_body(Body) of
         undefined ->
-            ejobman_stat:add(Id, 'auth', {'error', 'json undefined'}),
+            erpher_rt_stat:add(Id, 'auth', {'error', 'json undefined'}),
             {undefined, <<>>};
         Data ->
             X = create_exchange(St, Data),

@@ -596,14 +596,14 @@ periodic_send_stat(#csr{timer_stat=Ref, log_stat_interval=T} = St) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc sends stats to ejobman_stat
+%% @doc sends stats to erpher_rt_stat
 %%
 send_stat(#csr{sio_children=Sio, sjs_children=Sjs}) ->
     Len1 = length(Sio),
     Len2 = length(Sjs),
-    ejobman_stat:add('ecomet', 'children', ['socketio', Len1]),
-    ejobman_stat:add('ecomet', 'children', ['sockjs', Len2]),
-    ejobman_stat:add('ecomet', 'children', ['total', Len1 + Len2]).
+    erpher_rt_stat:add('ecomet', 'children', ['socketio', Len1]),
+    erpher_rt_stat:add('ecomet', 'children', ['sockjs', Len2]),
+    erpher_rt_stat:add('ecomet', 'children', ['total', Len1 + Len2]).
 
 %%-----------------------------------------------------------------------------
 %%
