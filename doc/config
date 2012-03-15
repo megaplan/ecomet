@@ -1,0 +1,42 @@
+ecomet config parameters
+========================
+Every parameter is {key, value} tuple. The possible keys are described below.
+Values can be either of: atom, integer, binary, list of {key, value} tuples.
+
+child_config - list of child parameters
+
+smoke_test - for use in smoke test. Values:
+  - broadcast - send received sockjs message to every sockjs child
+  - {random, NN} - send received sockjs message to NN random sockjs children
+
+log_stat_interval - interval to send internal stats (number of socket-io,
+  sockjs and total children) to stat server (erpher_rt_stat). Seconds.
+
+rabbit - list of amqp parameters:
+  host - host of amqp server. Atom.
+  port - port of amqp server. Integer.
+  user - user to connect to amqp server. Binary.
+  password - password to use for user. Binary.
+  vhost - vhost on amqp server. Binary.
+  exchange - exchange on amqp server. Binary.
+  exchange_type - exchange type for children on amqp server. Binary.
+  exchange_base - initial part of exchange name for children. Binary.
+  queue - not used?
+  routing_key - not used?
+
+socketio_config - list of socket-io parameters
+  port - port to bind. Integer.
+
+sockjs_config - list of sockjs parameters
+  port - port to bind. Integer.
+  nb_acceptors - number of acceptors for cowboy. Integer. Default 100.
+  max_connections - max number of connections for cowboy. Integer. Default 1024.
+  tag - service name (ex. "ecomet")
+
+debug - list of debug parameters
+  run - run time
+  http - http related
+  child - child creating related
+
+log - log filename base. If defined then log file will be created.
+
