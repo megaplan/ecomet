@@ -80,12 +80,16 @@ handle_call(_N, _From, St) ->
 handle_cast(stop, St) ->
     {stop, normal, St};
 
+handle_cast(st0p, St) ->
+    St;
+
 handle_cast({data_from_server, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
     mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id},
         St#child.debug, run, 2),
     mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id, Data},
                     St#child.debug, web_msg, 6),
     erpher_et:trace_me(50, {?MODULE, Id}, Sid, data_from_server, Data),
+    add(St#child.jit_log_data, 4, 'data from server'),
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
     New = update_idle(St_r),
     call_gc(New),
@@ -140,6 +144,7 @@ handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req,
     mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, Req},
                     St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),
+    add(St#child.jit_log_data, 5, 'amqp message'),
     New = send_rabbit_msg(St, Req),
     {noreply, New, New#child.economize};
 
@@ -547,12 +552,25 @@ send_jit_log2(Conf_level, Tid, Id) ->
     ets:foldl(F, none, Tid).
 
 send_jit_item({{Time, Now}, {_Limit, Msg}}, Level, Id) when Level == max ->
-    erpher_rt_stat:add('ecomet', Id, Time, Now, Msg);
+    Idbin = mpln_misc_web:make_term_binary(Id),
+    erpher_rt_stat:add('ecomet', Idbin, Time, Now, Msg);
 
 send_jit_item({{Time, Now}, {Limit, Msg}}, Level, Id) when Level >= Limit ->
-    erpher_rt_stat:add('ecomet', Id, Time, Now, Msg);
+    Idbin = mpln_misc_web:make_term_binary(Id),
+    erpher_rt_stat:add('ecomet', Idbin, Time, Now, Msg);
 
 send_jit_item(_, _, _) ->
     ok.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc insert jit log message into ets
+%%
+add(Tid, Limit, Data) ->
+    Now = now(),
+    Time = mpln_misc_time:get_gmt_time(Now),
+    Ts = {Time, Now},
+    Info = {Limit, Data},
+    ets:insert(Tid, {Ts, Info}).
 
 %%-----------------------------------------------------------------------------
