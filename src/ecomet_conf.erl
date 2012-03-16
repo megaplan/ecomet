@@ -80,6 +80,7 @@ get_config(Src) ->
 %%
 get_child_config(List) ->
     #child{
+        jit_log_level = proplists:get_value(jit_log_level, List, 0),
         economize = get_economize(List),
         deep_memory_economize = proplists:get_value(deep_memory_economize,
                                                     List, false),

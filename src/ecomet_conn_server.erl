@@ -59,9 +59,7 @@
 init([List]) ->
     process_flag(trap_exit, true),
     C = ecomet_conf:get_child_config(List),
-    mpln_p_debug:pr({?MODULE, init_start, ?LINE}, C#child.debug, run, 3),
     New = prepare_all(C),
-    mpln_p_debug:pr({?MODULE, init, ?LINE, New}, C#child.debug, run, 6),
     mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web},
         C#child.debug, run, 2),
     erpher_et:trace_me(45, ?MODULE, New#child.id, init, New#child.sjs_sid),
@@ -119,7 +117,7 @@ handle_cast(_N, #child{id=Id} = St) ->
     {noreply, St, St#child.economize}.
 
 %%-----------------------------------------------------------------------------
-terminate(_, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
+terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
     erpher_et:trace_me(45, ?MODULE, Id, terminate, Sconn),
     Res_t = ecomet_rb:teardown_tags(Conn),
     Res_q = ecomet_rb:teardown_queues(Conn),
@@ -129,6 +127,7 @@ terminate(_, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
        true ->
             ok
     end,
+    send_jit_log(Reason, St),
     mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id, Res_t, Res_q},
                     St#child.debug, run, 2),
     ok.
@@ -227,8 +226,17 @@ prepare_all(#child{sio_auth_recheck=T} = C) ->
     Cst = prepare_stat(Cid),
     Cr = prepare_rabbit(Cst),
     Ci = prepare_idle_check(Cr),
+    Cj = prepare_jit_log(Ci),
     Ref = erlang:send_after(T * 1000, self(), periodic_check),
-    Ci#child{timer=Ref}.
+    Cj#child{timer=Ref}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc prepare ets for jit log data
+%%
+prepare_jit_log(St) ->
+    Tid = ets:new(ecomet, [ordered_set, protected, {keypos, 1}]),
+    St#child{jit_log_data=Tid}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -511,5 +519,40 @@ call_gc(_) ->
 fetch_cowboy(List) ->
     Info_list = [{X, process_info(X, initial_call)} || X <- List],
     [X || {X, {initial_call,{cowboy_http_protocol,init,_}}} <- Info_list].
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc send jit log data to stat server if there is an error signs
+%% or configured jit log level is high enough
+%%
+send_jit_log(normal, #child{jit_log_level=Level, jit_log_data=Tid, id=Id}) ->
+    send_jit_log2(Level, Tid, Id);
+
+send_jit_log(shutdown, #child{jit_log_level=Level, jit_log_data=Tid, id=Id}) ->
+    send_jit_log2(Level, Tid, Id);
+
+send_jit_log({shutdown, _Term},
+             #child{jit_log_level=Level, jit_log_data=Tid, id=Id}) ->
+    send_jit_log2(Level, Tid, Id);
+
+send_jit_log(_Reason, #child{jit_log_data=Tid, id=Id}) ->
+    send_jit_log2(max, Tid, Id).
+
+send_jit_log2(Conf_level, Tid, Id) ->
+    F = fun(X, _) ->
+                 send_jit_item(X, Conf_level, Id),
+                 none
+         end,
+    %% simple version of ets:first + ets:next
+    ets:foldl(F, none, Tid).
+
+send_jit_item({{Time, Now}, {_Limit, Msg}}, Level, Id) when Level == max ->
+    erpher_rt_stat:add('ecomet', Id, Time, Now, Msg);
+
+send_jit_item({{Time, Now}, {Limit, Msg}}, Level, Id) when Level >= Limit ->
+    erpher_rt_stat:add('ecomet', Id, Time, Now, Msg);
+
+send_jit_item(_, _, _) ->
+    ok.
 
 %%-----------------------------------------------------------------------------

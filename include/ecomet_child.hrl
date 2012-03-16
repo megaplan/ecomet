@@ -41,7 +41,9 @@
     timer_idle :: reference(), % timer for idle checks
     economize  :: hibernate | infinity, % gen_server default policy
     deep_memory_economize = true :: boolean(), % call gc on linked cowboy pids
-    stat % #stat{}
+    stat, % #stat{}
+    jit_log_level = 0 :: integer(), % jit log level
+    jit_log_data % ets table id
 }).
 
 -endif.
