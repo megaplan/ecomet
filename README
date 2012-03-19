@@ -1,8 +1,19 @@
-
-notes:
+Notes:
+1)
 In process_reload_config you have the following options:
 - terminate current amqp connection and start a new one.
   Working children would then crash on amqp operations
 - just open a new connection. It can lead to connections leak in case of
   too often reconfiguration.
 - NOT DONE: open new conn/chann and send it to every child
+
+2)
+For just in time logging ets tables are used. One table per sockjs
+connection. So it is necessary to set ERL_MAX_ETS_TABLES env var to
+something big enough before starting erlang. Or change the way
+to keep jit log messages to something:
+  {{Id_ref, Time_in_seconds}, Data}
+
+And fetching would be:
+  Ms = ets:fun2ms(fun({{I, T}, _} = D) when I =:= Id, T >= 0 -> D end)
+  ets:select(Tab, Ms)
