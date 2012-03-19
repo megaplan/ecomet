@@ -4,6 +4,33 @@ Every parameter is {key, value} tuple. The possible keys are described below.
 Values can be either of: atom, integer, binary, list of {key, value} tuples.
 
 child_config - list of child parameters
+  jit_log_level - log level for 'just in time' messages. Integer.
+  economize - use hibernate or not in ecomet connection server. Values:
+    memory (default) or cpu.
+  deep_memory_economize - call garbage collector for sockjs process and
+    linked cowboy processes. Default: false.
+  user_data_as_auth_host - use login field of url auth data as auth host.
+    Default: false
+  sio_auth_recheck_interval - interval to perform periodic auth check. Seconds.
+    Default: 300 s
+  idle_timeout - timeout to terminate idle sockjs connection. Seconds.
+  http_connect_timeout - http connect timeout for use in auth check.
+    Milliseconds.
+  http_timeout - http request timeout for use in auth check. Milliseconds.
+  qmax_dur - Not used. Internal queue max keep duration before clean.
+    Microseconds.
+  qmax_len - Not used. Internal queue max size before clean.
+  id_web - not used
+  type - not used
+  no_local - simulating no_local amqp flag. Not used in production.
+  debug - list of debug parameters. Possible items:
+    run
+    http
+    web_msg
+    rb_msg
+    stat
+  exchange_base - base part of client's exchange name
+  event - not used
 
 smoke_test - for use in smoke test. Values:
   - broadcast - send received sockjs message to every sockjs child
@@ -39,4 +66,3 @@ debug - list of debug parameters
   child - child creating related
 
 log - log filename base. If defined then log file will be created.
-
