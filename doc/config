@@ -5,6 +5,8 @@ Values can be either of: atom, integer, binary, list of {key, value} tuples.
 
 child_config - list of child parameters
   jit_log_level - log level for 'just in time' messages. Integer.
+  jit_log_keep_time - time to keep 'just in time' messages. Hours.
+  jit_log_keep_n - number of 'just in time' messages to keep. Integer.
   economize - use hibernate or not in ecomet connection server. Values:
     memory (default) or cpu.
   deep_memory_economize - call garbage collector for sockjs process and
