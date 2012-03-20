@@ -65,7 +65,8 @@ init([List]) ->
     New = prepare_all(C),
     mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web},
         C#child.debug, run, 2),
-    add_jit_msg(New#child.jit_log_data, New#child.id, 'init', 2, 'init'),
+    erpher_jit_log:add_jit_msg(New#child.jit_log_data, New#child.id,
+                               'init', 2, 'init'),
     erpher_et:trace_me(45, ?MODULE, New#child.id, init, New#child.sjs_sid),
     {ok, New, New#child.economize}.
 
@@ -97,7 +98,8 @@ handle_cast({data_from_server, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
     mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id, Data},
                     St#child.debug, web_msg, 6),
     erpher_et:trace_me(50, {?MODULE, Id}, Sid, data_from_server, Data),
-    add_jit_msg(St#child.jit_log_data, Id, 'data from server', 4, Data),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
+                               'data from server', 4, Data),
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
     New = update_idle(St_r),
     call_gc(New),
@@ -109,7 +111,8 @@ handle_cast({data_from_sjs, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
     mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id, Data},
                     St#child.debug, web_msg, 6),
     erpher_et:trace_me(50, {?MODULE, Id}, Sid, data_from_sjs, Data),
-    add_jit_msg(St#child.jit_log_data, Id, 'data from sockjs', 4, Data),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
+                               'data from sockjs', 4, Data),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
     New = update_idle(St_r),
     call_gc(New),
@@ -140,7 +143,8 @@ terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
        true ->
             ok
     end,
-    add_jit_msg(St#child.jit_log_data, Id, 'terminate', 2, 'terminate'),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
+                               'terminate', 2, 'terminate'),
     send_jit_log(Reason, St),
     ets:delete(St#child.jit_log_data),
     mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id, Res_t, Res_q},
@@ -155,7 +159,8 @@ handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req,
     mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, Req},
                     St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),
-    add_jit_msg(St#child.jit_log_data, Id, 'amqp message', 5, _Content),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
+                               'amqp message', 5, _Content),
     New = send_rabbit_msg(St, Req),
     {noreply, New, New#child.economize};
 
@@ -259,7 +264,7 @@ prepare_all(#child{sio_auth_recheck=T} = C) ->
 %% @doc prepare ets for jit log data
 %%
 prepare_jit_log(St) ->
-    Tid = ets:new(ecomet, [ordered_set, protected, {keypos, 1}]),
+    Tid = erpher_jit_log:prepare_jit_tab(ecomet),
     St#child{jit_log_data=Tid}.
 
 %%-----------------------------------------------------------------------------
@@ -550,51 +555,17 @@ fetch_cowboy(List) ->
 %% or configured jit log level is high enough
 %%
 send_jit_log(normal, #child{jit_log_level=Level, jit_log_data=Tid}) ->
-    send_jit_log2(Level, Tid);
+    erpher_jit_log:send_jit_log(Level, Tid);
 
 send_jit_log(shutdown, #child{jit_log_level=Level, jit_log_data=Tid}) ->
-    send_jit_log2(Level, Tid);
+    erpher_jit_log:send_jit_log(Level, Tid);
 
 send_jit_log({shutdown, _Term},
              #child{jit_log_level=Level, jit_log_data=Tid}) ->
-    send_jit_log2(Level, Tid);
+    erpher_jit_log:send_jit_log(Level, Tid);
 
 send_jit_log(_Reason, #child{jit_log_data=Tid, id=Id}) ->
-    add_jit_msg(Tid, Id, 'crash', 0, 'crash'),
-    send_jit_log2(max, Tid).
-
-send_jit_log2(Conf_level, Tid) ->
-    F = fun(X, _) ->
-                 send_jit_item(X, Conf_level),
-                 none
-         end,
-    %% simple version of ets:first + ets:next
-    ets:foldl(F, none, Tid).
-
-send_jit_item({{Time, Now}, {_Limit, Id1, Id2, Msg}}, Level)
-  when Level == max ->
-    Bin1 = mpln_misc_web:make_term_binary(Id1),
-    Bin2 = mpln_misc_web:make_term_binary(Id2),
-    erpher_rt_stat:add(Bin1, Bin2, Time, Now, Msg);
-
-send_jit_item({{Time, Now}, {Limit, Id1, Id2, Msg}}, Level)
-  when Level >= Limit ->
-    Bin1 = mpln_misc_web:make_term_binary(Id1),
-    Bin2 = mpln_misc_web:make_term_binary(Id2),
-    erpher_rt_stat:add(Bin1, Bin2, Time, Now, Msg);
-
-send_jit_item(_, _) ->
-    ok.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc insert jit log message with current timestamp into ets
-%%
-add_jit_msg(Tab, Id1, Id2, Limit, Data) ->
-    Now = now(),
-    Time = mpln_misc_time:get_gmt_time(Now),
-    Ts = {Time, Now},
-    Info = {Limit, Id1, Id2, Data},
-    ets:insert(Tab, {Ts, Info}).
+    erpher_jit_log:add_jit_msg(Tid, Id, 'crash', 0, 'crash'),
+    erpher_jit_log:send_jit_log(max, Tid).
 
 %%-----------------------------------------------------------------------------
