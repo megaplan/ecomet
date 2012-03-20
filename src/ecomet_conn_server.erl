@@ -331,6 +331,7 @@ periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref,
     mpln_misc_run:cancel_timer(Ref),
     Qnew = clean_queue(Q, Dur, Max),
     St_c = State#child{queue=Qnew},
+    clean_jit_logs(State),
     St_a = check_auth(St_c),
     St_sent = send_queued_msg(St_a),
     mpln_p_debug:pr({?MODULE, periodic_check, ?LINE, Id, St_sent},
@@ -567,5 +568,13 @@ send_jit_log({shutdown, _Term},
 send_jit_log(_Reason, #child{jit_log_data=Tid, id=Id}) ->
     erpher_jit_log:add_jit_msg(Tid, Id, 'crash', 0, 'crash'),
     erpher_jit_log:send_jit_log(max, Tid).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc clean extra jit log messages basing on time and amount
+%%
+clean_jit_logs(#child{jit_log_data=Tid, jit_log_keep_n=Limit_n,
+                     jit_log_keep_time=Limit_t}) ->
+    erpher_jit_log:clean_jit_logs(Tid, Limit_n, Limit_t).
 
 %%-----------------------------------------------------------------------------
