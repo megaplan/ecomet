@@ -109,6 +109,11 @@ handle_cast({del_sio, Pid}, St) ->
     New = del_sio_pid(St, Pid),
     {noreply, New};
 
+handle_cast({set_jit_log_level, N}, St) ->
+    %% no api, use message passing
+    set_jit_log_level(St, N),
+    {noreply, St};
+
 handle_cast({sjs_add, Sid, Conn}, St) ->
     mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE, Sid},
                     St#csr.debug, run, 2),
@@ -819,5 +824,12 @@ process_sjs_multicast_msg(#csr{smoke_test={random, N}, sjs_children=Ch} = St,
     end,
     lists:foreach(F, lists:duplicate(N, true)),
     New.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc set new jit log level for all sockjs children
+%%
+set_jit_log_level(#csr{sjs_children=Ch}, N) ->
+    [ecomet_conn_server:set_jit_log_level(Pid, N) || #chi{pid=Pid} <- Ch].
 
 %%-----------------------------------------------------------------------------
