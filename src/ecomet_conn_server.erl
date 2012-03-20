@@ -555,19 +555,12 @@ fetch_cowboy(List) ->
 %% @doc send jit log data to stat server if there is an error signs
 %% or configured jit log level is high enough
 %%
-send_jit_log(normal, #child{jit_log_level=Level, jit_log_data=Tid}) ->
-    erpher_jit_log:send_jit_log(Level, Tid);
-
-send_jit_log(shutdown, #child{jit_log_level=Level, jit_log_data=Tid}) ->
-    erpher_jit_log:send_jit_log(Level, Tid);
-
-send_jit_log({shutdown, _Term},
-             #child{jit_log_level=Level, jit_log_data=Tid}) ->
-    erpher_jit_log:send_jit_log(Level, Tid);
-
-send_jit_log(_Reason, #child{jit_log_data=Tid, id=Id}) ->
-    erpher_jit_log:add_jit_msg(Tid, Id, 'crash', 0, 'crash'),
-    erpher_jit_log:send_jit_log(max, Tid).
+send_jit_log(Reason, St) ->
+    erpher_jit_log:send_jit_log(Reason,
+                                St#child.jit_log_level,
+                                St#child.jit_log_data,
+                                St#child.id
+                               ).
 
 %%-----------------------------------------------------------------------------
 %%
