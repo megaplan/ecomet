@@ -41,6 +41,9 @@
 -export([data_from_sio/2]).
 -export([data_from_sjs/2]).
 -export([data_from_server/2]).
+-export([
+         set_jit_log_level/2
+        ]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -62,6 +65,7 @@ init([List]) ->
     New = prepare_all(C),
     mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web},
         C#child.debug, run, 2),
+    add_jit_msg(New#child.jit_log_data, New#child.id, 'init', 2, 'init'),
     erpher_et:trace_me(45, ?MODULE, New#child.id, init, New#child.sjs_sid),
     {ok, New, New#child.economize}.
 
@@ -82,6 +86,10 @@ handle_cast(stop, St) ->
 
 handle_cast(st0p, St) ->
     St;
+
+handle_cast({set_jit_log_level, N}, St) ->
+    New = St#child{jit_log_level=N},
+    {noreply, New, New#child.economize};
 
 handle_cast({data_from_server, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
     mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id},
@@ -132,6 +140,7 @@ terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
        true ->
             ok
     end,
+    add_jit_msg(St#child.jit_log_data, Id, 'terminate', 2, 'terminate'),
     send_jit_log(Reason, St),
     ets:delete(St#child.jit_log_data),
     mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id, Res_t, Res_q},
@@ -183,6 +192,14 @@ code_change(_Old_vsn, State, _Extra) ->
 %%%----------------------------------------------------------------------------
 %%% API
 %%%----------------------------------------------------------------------------
+%%
+%% @doc set jit log level
+%% @since 2012-03-20 12:36
+%%
+set_jit_log_level(Pid, N) ->
+    gen_server:cast(Pid, {set_jit_log_level, N}).
+
+%%-----------------------------------------------------------------------------
 %%
 %% @doc used for broadcast by ecomet_server
 %% @since 2012-01-23 16:02
