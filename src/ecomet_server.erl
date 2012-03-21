@@ -66,10 +66,11 @@
 %%%----------------------------------------------------------------------------
 
 init(_) ->
+    process_flag(trap_exit, true),
     C = ecomet_conf:get_config(),
     New = prepare_all(C),
     mpln_p_debug:pr({?MODULE, 'init done', ?LINE}, New#csr.debug, run, 1),
-    {ok, New, ?T}.
+    {ok, New}.
 
 %%-----------------------------------------------------------------------------
 handle_call({add_sio, Mgr, Handler, Client, Sid}, _From, St) ->
@@ -144,19 +145,15 @@ handle_cast(_, St) ->
     {noreply, St}.
 
 %%-----------------------------------------------------------------------------
-terminate(_, _State) ->
+terminate(_Reason, St) ->
+    ecomet_rb:teardown(St#csr.conn),
+    ecomet_sockjs_handler:stop(),
+    mpln_p_debug:pr({?MODULE, 'terminate', ?LINE, _Reason},
+                    St#csr.debug, run, 1),
     %yaws:stop(),
     ok.
 
 %%-----------------------------------------------------------------------------
-handle_info(timeout, State) ->
-    New = periodic_check(State),
-    {noreply, New};
-
-handle_info(periodic_check, State) ->
-    New = periodic_check(State),
-    {noreply, New};
-
 handle_info(periodic_send_stat, State) ->
     New = periodic_send_stat(State),
     {noreply, New};
