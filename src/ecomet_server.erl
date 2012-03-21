@@ -425,9 +425,8 @@ prepare_part(#csr{log_stat_interval=T} = C) ->
     New = prepare_stat(C),
     %start_socketio(C),
     ecomet_sockjs_handler:start(C),
-    Ref = erlang:send_after(?T, self(), periodic_check),
     Tref = erlang:send_after(T * 1000, self(), periodic_send_stat),
-    New#csr{timer=Ref, timer_stat=Tref}.
+    New#csr{timer_stat=Tref}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -576,17 +575,6 @@ terminate_sio_children(St, List) ->
                 ecomet_conn_server:stop(Pid)
         end,
     lists:foreach(F, List).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc does periodic tasks
-%% @todo get rid of it
-%%
-periodic_check(#csr{timer=Ref} = St) ->
-    mpln_p_debug:pr({?MODULE, periodic_check, ?LINE}, St#csr.debug, run, 6),
-    mpln_misc_run:cancel_timer(Ref),
-    Nref = erlang:send_after(?T, self(), periodic_check),
-    St#csr{timer=Nref}.
 
 %%-----------------------------------------------------------------------------
 %%
