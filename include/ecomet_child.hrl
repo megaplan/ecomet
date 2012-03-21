@@ -45,6 +45,7 @@
     jit_log_keep_n :: non_neg_integer(),
     jit_log_keep_time :: non_neg_integer(),
     jit_log_level = 0 :: integer(), % jit log level
+    jit_log_status    :: ok | error,
     jit_log_data % ets table id
 }).
 

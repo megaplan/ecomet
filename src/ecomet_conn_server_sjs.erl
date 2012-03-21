@@ -276,11 +276,13 @@ proceed_auth_msg(#child{id=Id,
     erpher_et:trace_me(45, ?MODULE, Id, 'auth http error', Reason),
     Bin = mpln_misc_web:make_term2_binary(Reason),
     Short = mpln_misc_web:sub_bin(Bin),
-    erpher_rt_stat:add(Id, 'auth', ['http_error', Url, Host, Cookie, Short]),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
+                               'auth', 3,
+                               ['http_error', Url, Host, Cookie, Short]),
     mpln_p_debug:pr({?MODULE, proceed_auth_msg, ?LINE, error, Id, Reason},
                     St#child.debug, run, 1),
     ecomet_conn_server:stop(self()),
-    St#child{id_s = undefined}.
+    St#child{jit_log_status=error, id_s = undefined}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -302,10 +304,12 @@ proceed_type_msg(#child{id=Id, id_s=undefined,
         {Url, Host, Cookie, Http_resp, Data}),
     Short_rb = mpln_misc_web:make_term2_short_bin(Data),
     Short_http = mpln_misc_web:make_term2_short_bin(Http_resp),
-    erpher_rt_stat:add(Id, 'auth', ['error', 'undefined user id',
-                                  Url, Host, Cookie, Short_rb, Short_http]),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
+                               'auth', 3,
+                               ['error', 'undefined user id',
+                                Url, Host, Cookie, Short_rb, Short_http]),
     ecomet_conn_server:stop(self()),
-    St;
+    St#child{jit_log_status=error};
 
 proceed_type_msg(#child{id=Id, conn=Conn, no_local=No_local,
                         routes=Routes} = St, Exchange, 'reauth', _Data, _) ->
@@ -341,8 +345,10 @@ proceed_type_msg(#child{id=Id,
     erpher_et:trace_me(50, ?MODULE, Id, 'undefined type message', _Other),
     Short_rb = mpln_misc_web:make_term2_short_bin(Data),
     Short_http = mpln_misc_web:make_term2_short_bin(Http_resp),
-    erpher_rt_stat:add(Id, 'auth', ['warning', 'undefined type message',
-                                  Url, Host, Cookie, Short_rb, Short_http]),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
+                               'auth', 3,
+                               ['warning', 'undefined type message',
+                                Url, Host, Cookie, Short_rb, Short_http]),
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, other, Id,
                      _Exch, _Other}, St#child.debug, run, 2),
     St.
@@ -376,7 +382,9 @@ proceed_process_auth_resp(#child{id=Id} = St, Body) ->
             Bin = mpln_misc_web:make_term2_binary(Body),
             Short = mpln_misc_web:sub_bin(Bin),
             erpher_et:trace_me(50, ?MODULE, Id, json_error, Body),
-            erpher_rt_stat:add(Id, 'auth', {'json_error', Short}),
+            erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
+                                       'auth', 3,
+                                       {'json_error', Short}),
             {undefined, <<>>};
         Data ->
             X = create_exchange(St, Data),

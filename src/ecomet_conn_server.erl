@@ -555,6 +555,13 @@ fetch_cowboy(List) ->
 %% @doc send jit log data to stat server if there is an error signs
 %% or configured jit log level is high enough
 %%
+send_jit_log(_Reason, #child{jit_log_status=error} = St) ->
+    erpher_jit_log:send_jit_log(error,
+                                St#child.jit_log_level,
+                                St#child.jit_log_data,
+                                St#child.id
+                               );
+
 send_jit_log(Reason, St) ->
     erpher_jit_log:send_jit_log(Reason,
                                 St#child.jit_log_level,
