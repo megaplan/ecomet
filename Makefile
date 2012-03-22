@@ -22,7 +22,7 @@ ERLC := erlc $(ERLC_OPTS)
 
 all: $(EBIN_DIR)
 	$(ERLC) -W $(INCLUDES) -o $(EBIN_DIR) $(SRC_DIR)/*.erl
-	cp $(SRC_DIR)/ecomet.app $(EBIN_DIR)
+	cp $(SRC_DIR)/ecomet.app.src $(EBIN_DIR)/ecomet.app
 
 clean:
 	@rm -rvf $(EBIN_DIR)/*
